@@ -1,0 +1,15 @@
+{
+  "_instructions": [
+    "All paths can be relative (resolved against FormFiller.exe folder) or absolute.",
+    "Default 'forms' and 'filled' = sibling folders next to the EXE — fully portable.",
+    "RM info (name, staff_id, fimm_id, ippc_id, branches) lives in data/clients.xlsx -> RM_Profile sheet.",
+    "Y coordinates in forms.json are from the BOTTOM of the page (A4 bottom=0, top=842).",
+    "On every launch, the previous settings.json is copied to config/backups/ with a timestamp."
+  ],
+  "forms_folder": "forms",
+  "output_folder": "filled",
+  "date_format": "%d/%m/%Y",
+  "default_font": "Helvetica",
+  "default_font_size": 10,
+  "auto_open_output": true
+}

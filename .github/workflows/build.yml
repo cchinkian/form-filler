@@ -15,14 +15,32 @@ jobs:
         with:
           python-version: '3.12'
 
-      - name: Install PyInstaller
-        run: pip install pyinstaller
+      - name: Install dependencies
+        run: pip install -r requirements.txt
 
-      - name: Build EXE
-        run: pyinstaller --onefile --windowed --name FormFillerTest green_test.py
+      - name: Build FormFiller.exe
+        run: pyinstaller --onefile --windowed --name FormFiller --collect-all tkcalendar src/main_app.py
 
-      - name: Upload EXE
+      - name: Build CoordPicker.exe
+        run: pyinstaller --onefile --windowed --name CoordPicker src/coord_picker.py
+
+      - name: Build GreenTest.exe
+        run: pyinstaller --onefile --windowed --name GreenTest green_test.py
+
+      - name: Stage portable bundle
+        run: |
+          mkdir bundle
+          copy dist\FormFiller.exe bundle\
+          copy dist\CoordPicker.exe bundle\
+          copy dist\GreenTest.exe bundle\
+          xcopy /E /I config bundle\config
+          xcopy /E /I data bundle\data
+          if exist bundle\config\settings.json del bundle\config\settings.json
+          copy bundle\config\settings.example.json bundle\config\settings.json
+          if exist bundle\data\clients.xlsx del bundle\data\clients.xlsx
+
+      - name: Upload bundle
         uses: actions/upload-artifact@v4
         with:
-          name: FormFillerTest
-          path: dist/FormFillerTest.exe
+          name: FormFiller-portable
+          path: bundle/

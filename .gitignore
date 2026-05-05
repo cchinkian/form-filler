@@ -1,7 +1,25 @@
 __pycache__/
 *.pyc
+*.exe
 dist/
 build/
 *.spec
 venv/
 zzz_*
+
+# PDPA — never commit real client data or RM personal settings
+data/clients.xlsx
+data/fill_log.csv
+data/state.json
+config/settings.json
+config/settings.json.old
+config/backups/
+config/forms.json.bak
+
+# Pen-drive runtime folders (created on launch, never source-controlled)
+forms/
+filled/
+
+# Template files are committed (safe — no real data)
+!data/clients_template.xlsx
+!config/settings.example.json
