@@ -28,6 +28,7 @@ jobs:
         run: pyinstaller --onefile --windowed --name GreenTest green_test.py
 
       - name: Stage portable bundle
+        shell: cmd
         run: |
           mkdir bundle
           copy dist\FormFiller.exe bundle\
