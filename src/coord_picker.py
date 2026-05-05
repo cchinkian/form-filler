@@ -411,9 +411,10 @@ class CoordPickerApp(tk.Tk):
         except Exception:
             existing = {}
 
-        # Strip template/reference entries
-        clean = {k: v for k, v in existing.items()
-                 if not k.startswith("_")}
+        # Preserve internal blocks (_shared_fields, _TEMPLATE) — they hold
+        # the shared field library + how-to-use docs. Only the form being
+        # saved gets overwritten below.
+        clean = dict(existing)
         pdf_filename = ""
         pdf_hash     = ""
         if self._doc and hasattr(self, "_pdf_path") and self._pdf_path:

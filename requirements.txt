@@ -2,4 +2,5 @@ openpyxl
 pypdf
 reportlab
 tkcalendar
+babel
 pyinstaller

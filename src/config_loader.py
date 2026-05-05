@@ -97,7 +97,7 @@ def ensure_runtime_dirs(settings: dict) -> dict:
     if not ff.exists():
         ff.mkdir(parents=True, exist_ok=True)
         info["forms_created"] = True
-    if not any(ff.iterdir()):
+    if not any(p.is_dir() for p in ff.iterdir()):
         info["forms_empty"] = True
 
     of = output_folder_path(settings)
@@ -282,10 +282,12 @@ def health_check(settings: dict, forms: dict) -> list[dict]:
         return [{"name": "forms_folder", "status": "error",
                  "message": f"Folder not found: {forms_folder}"}]
 
-    # Empty forms folder — friendly first-run message
-    if not any(forms_folder.iterdir()):
+    # Empty forms folder — friendly first-run message.
+    # Only subdirectories count as forms; stray loose files are ignored
+    # (they're not pickable as forms anyway).
+    if not any(p.is_dir() for p in forms_folder.iterdir()):
         return [{"name": "forms_folder", "status": "empty",
-                 "message": (f"{forms_folder} is empty. "
+                 "message": (f"{forms_folder} has no form subfolders. "
                              "Create a subfolder per form and drop the blank PDF inside, "
                              "then click ↻ Reload.")}]
 

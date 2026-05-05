@@ -492,12 +492,29 @@ class FormFillerApp(tk.Tk):
             d = self.dat_picker.get_date()
             date_str = d.strftime("%d/%m/%Y")
         else:
-            date_str = self.var_date.get().strip() if hasattr(self, "var_date") \
+            raw = self.var_date.get().strip() if hasattr(self, "var_date") \
                 else date.today().strftime("%d/%m/%Y")
+            # Validate dd/mm/yyyy or normalize from common alternates;
+            # if user typed garbage, fall back to today rather than corrupt forms.
+            date_str = self._normalize_date(raw)
         return {
             "rm_branch": self.var_branch.get(),
             "date":      date_str,
         }
+
+    @staticmethod
+    def _normalize_date(raw: str) -> str:
+        """Accept dd/mm/yyyy, d/m/yyyy, dd-mm-yyyy, yyyy-mm-dd. Output dd/mm/yyyy.
+        Bad input → raises ValueError so caller surfaces it."""
+        from datetime import datetime as _dt
+        for fmt in ("%d/%m/%Y", "%d-%m-%Y", "%Y-%m-%d"):
+            try:
+                return _dt.strptime(raw, fmt).strftime("%d/%m/%Y")
+            except ValueError:
+                continue
+        raise ValueError(
+            f"Date '{raw}' is not in dd/mm/yyyy format. "
+            "Use the calendar picker or type like 05/05/2026.")
 
     # ── Fill actions ──────────────────────────────────────────────────────────
 
@@ -537,7 +554,11 @@ class FormFillerApp(tk.Tk):
         self._run_fill([client], app, label=name)
 
     def _run_fill(self, clients: list[dict], app: dict, label: str = ""):
-        session_ctx = self._current_session_context()
+        try:
+            session_ctx = self._current_session_context()
+        except ValueError as e:
+            messagebox.showerror("Bad date", str(e))
+            return
         for c in clients:
             c.setdefault("date", session_ctx["date"])
 

@@ -19,7 +19,7 @@ jobs:
         run: pip install -r requirements.txt
 
       - name: Build FormFiller.exe
-        run: pyinstaller --onefile --windowed --name FormFiller --collect-all tkcalendar src/main_app.py
+        run: pyinstaller --onefile --windowed --name FormFiller --collect-all tkcalendar --collect-all babel --hidden-import babel.numbers src/main_app.py
 
       - name: Build CoordPicker.exe
         run: pyinstaller --onefile --windowed --name CoordPicker src/coord_picker.py
