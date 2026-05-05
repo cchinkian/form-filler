@@ -24,6 +24,7 @@ from datetime import date, datetime
 
 sys.path.insert(0, str(Path(__file__).parent))
 
+import client_db
 import config_loader
 import excel_reader
 import pdf_engine
@@ -205,11 +206,17 @@ class FormFillerApp(tk.Tk):
             self.applications = config_loader.load_applications()
             self.app_map      = {a["name"]: a for a in self.applications}
             self.xlsx_path    = config_loader.data_path("clients.xlsx")
+
+            # Phase 1A: client master data comes from client_db.db.
+            # Master sheet is the read-only fallback if DB is empty (legacy mode).
+            client_db.init_db()
+            self.master_data = self._load_master_data()
+
+            # RM profile still lives in clients.xlsx -> RM_Profile sheet
             if self.xlsx_path.exists():
-                self.master_data = excel_reader.load_master(self.xlsx_path)
-                self.rm_profile  = excel_reader.load_rm_profile(self.xlsx_path)
+                self.rm_profile = excel_reader.load_rm_profile(self.xlsx_path)
             else:
-                self.master_data, self.rm_profile = {}, {"branches": []}
+                self.rm_profile = {"branches": []}
         except ExcelLockedError as e:
             messagebox.showerror("Excel is open", str(e))
             return
@@ -246,6 +253,27 @@ class FormFillerApp(tk.Tk):
         self._set_status(
             f"Loaded {n_clients} client(s), {len(self.applications)} application(s). "
             f"RM: {rm_name}", "green" if n_clients else "orange")
+
+    def _load_master_data(self) -> dict:
+        """Returns {ic_normalized: client_dict}.
+        Prefers client_db.db; falls back to clients.xlsx Master sheet if DB empty.
+        """
+        # Try DB first
+        try:
+            rows = client_db.list_all(active_only=True)
+        except Exception as e:
+            rows = []
+            print(f"client_db error (falling back to Master sheet): {e}")
+        if rows:
+            return {r["ic_number"]: r for r in rows}
+
+        # Fallback: Master sheet (legacy mode — pre-Phase 1A data)
+        if self.xlsx_path and self.xlsx_path.exists():
+            try:
+                return excel_reader.load_master(self.xlsx_path)
+            except Exception:
+                return {}
+        return {}
 
     def _run_health_check(self):
         """P1-3: Show banner if any form subfolders are missing or first-run."""
@@ -400,30 +428,52 @@ class FormFillerApp(tk.Tk):
     # ── Single panel ──────────────────────────────────────────────────────────
 
     def _build_single_panel(self, app: dict):
-        if not self.xlsx_path or not self.xlsx_path.exists():
-            tk.Label(self._panel,
-                     text="data/clients.xlsx not found.",
-                     fg="red").pack(anchor="w", pady=8)
-            return
-
         sheet = app.get("data_sheet", "Master")
+        self._single_sheet = sheet
+        self._selected_ic: str | None = None
 
-        row0 = tk.Frame(self._panel)
-        row0.pack(fill=tk.X, pady=4)
-        tk.Label(row0, text="Client:", width=LABEL_W,
-                 anchor="w").pack(side=tk.LEFT)
-        self.var_client = tk.StringVar()
-        names = excel_reader.get_master_names(self.master_data)
-        self.cmb_client = ttk.Combobox(row0, textvariable=self.var_client,
-                                       values=names, state="readonly", width=38)
-        self.cmb_client.pack(side=tk.LEFT)
-        if names:
-            self.cmb_client.current(0)
-        self.cmb_client.bind("<<ComboboxSelected>>",
-                             lambda _: self._autofill_single(sheet))
+        # Search row
+        srch = tk.Frame(self._panel)
+        srch.pack(fill=tk.X, pady=(4, 2))
+        tk.Label(srch, text="Search:", width=8, anchor="w").pack(side=tk.LEFT)
+        self.var_search = tk.StringVar()
+        self.var_search.trace_add("write", lambda *_: self._on_search_changed())
+        ent = tk.Entry(srch, textvariable=self.var_search, width=32)
+        ent.pack(side=tk.LEFT, padx=(0, 4))
+        tk.Label(srch, text="(full IC or partial name)",
+                 fg="gray", font=("", 8)).pack(side=tk.LEFT)
+
+        tk.Button(srch, text="➕ Add",
+                  command=self._open_add_client).pack(side=tk.RIGHT, padx=(2, 0))
+        tk.Button(srch, text="🗑 Delete",
+                  command=self._delete_selected_client
+                  ).pack(side=tk.RIGHT, padx=(2, 0))
+        tk.Button(srch, text="✏️ Edit",
+                  command=self._open_edit_client).pack(side=tk.RIGHT, padx=(0, 0))
+
+        # Results listbox (limited height)
+        list_frm = tk.Frame(self._panel)
+        list_frm.pack(fill=tk.X, pady=(2, 4))
+        self.lst_clients = tk.Listbox(list_frm, height=5, font=("Courier", 9),
+                                       activestyle="dotbox")
+        self.lst_clients.pack(side=tk.LEFT, fill=tk.X, expand=True)
+        sb = ttk.Scrollbar(list_frm, orient="vertical",
+                           command=self.lst_clients.yview)
+        sb.pack(side=tk.RIGHT, fill=tk.Y)
+        self.lst_clients.config(yscrollcommand=sb.set)
+        self.lst_clients.bind("<<ListboxSelect>>",
+                               lambda _: self._on_client_pick())
+        self._render_search_results(client_db.list_all(active_only=True))
+
+        # Selected client banner
+        self.lbl_selected = tk.Label(self._panel,
+                                      text="No client selected.",
+                                      anchor="w", fg="gray",
+                                      font=("", 9, "bold"))
+        self.lbl_selected.pack(fill=tk.X, padx=4, pady=(0, 2))
 
         ttk.Separator(self._panel, orient="horizontal").pack(
-            fill=tk.X, pady=(6, 4))
+            fill=tk.X, pady=(2, 4))
 
         try:
             headers = excel_reader.get_sheet_headers(self.xlsx_path, sheet)
@@ -466,9 +516,10 @@ class FormFillerApp(tk.Tk):
         self._autofill_single(sheet)
 
     def _autofill_single(self, sheet: str):
-        ic = self._ic_for_name(
-            self.var_client.get() if hasattr(self, "var_client") else "")
+        ic = self._selected_ic if hasattr(self, "_selected_ic") else None
         if not ic:
+            return
+        if not self.xlsx_path or not self.xlsx_path.exists():
             return
         try:
             existing = excel_reader.find_client_in_batch(
@@ -480,10 +531,115 @@ class FormFillerApp(tk.Tk):
                 var.set(str(existing[col]))
 
     def _ic_for_name(self, name: str) -> str:
+        """Legacy helper used by some callers; prefer _selected_ic."""
         for ic, rec in self.master_data.items():
             if rec.get("name") == name:
                 return ic
         return ""
+
+    # ── Phase 1A: client search + CRUD helpers ────────────────────────────────
+
+    def _on_search_changed(self):
+        q = self.var_search.get().strip()
+        if not q:
+            results = client_db.list_all(active_only=True, limit=200)
+        elif q.replace("-", "").replace(" ", "").isdigit():
+            # Looks like an IC — full match
+            hit = client_db.by_ic(q)
+            results = [hit] if hit else []
+        else:
+            results = client_db.by_name(q, limit=50)
+        self._render_search_results(results)
+
+    def _render_search_results(self, results: list[dict]):
+        if not hasattr(self, "lst_clients"):
+            return
+        self.lst_clients.delete(0, tk.END)
+        self._search_results = results
+        for c in results:
+            star = " ⭐" if c.get("permanent") else ""
+            label = f"  {c['name']:<32s}  {c['ic_number']}{star}"
+            self.lst_clients.insert(tk.END, label)
+
+    def _on_client_pick(self):
+        sel = self.lst_clients.curselection()
+        if not sel:
+            return
+        client = self._search_results[sel[0]]
+        self._selected_ic = client["ic_number"]
+        star = " ⭐ permanent" if client.get("permanent") else ""
+        self.lbl_selected.config(
+            text=f"Selected: {client['name']}  ({client['ic_number']}){star}",
+            fg="#155724")
+        self._autofill_single(getattr(self, "_single_sheet", "Master"))
+
+    def _open_add_client(self):
+        dlg = ClientFormDialog(self, mode="add")
+        self.wait_window(dlg)
+        if dlg.result:
+            try:
+                client_db.add(dlg.result)
+                self._after_client_change(f"Added {dlg.result['name']}.")
+            except ValueError as e:
+                messagebox.showerror("Cannot add", str(e))
+
+    def _open_edit_client(self):
+        if not self._selected_ic:
+            messagebox.showwarning("Pick a client",
+                                   "Tick a client in the list first.")
+            return
+        client = client_db.by_ic(self._selected_ic, include_inactive=True)
+        if not client:
+            return
+        dlg = ClientFormDialog(self, mode="edit", client=client)
+        self.wait_window(dlg)
+        if dlg.result:
+            try:
+                client_db.update(self._selected_ic, dlg.result)
+                self._after_client_change(f"Updated {dlg.result.get('name', '')}.")
+            except ValueError as e:
+                messagebox.showerror("Cannot update", str(e))
+
+    def _delete_selected_client(self):
+        if not self._selected_ic:
+            messagebox.showwarning("Pick a client",
+                                   "Tick a client in the list first.")
+            return
+        client = client_db.by_ic(self._selected_ic, include_inactive=True)
+        if not client:
+            return
+        # Two-step: soft delete by default, hard delete if user picks "永久删除"
+        choice = messagebox.askyesnocancel(
+            "Delete client",
+            f"Delete '{client['name']}' ({client['ic_number']})?\n\n"
+            "Yes = soft delete (hidden from search, can restore later)\n"
+            "No  = permanently delete (cannot undo)\n"
+            "Cancel = abort",
+            icon="warning")
+        if choice is None:
+            return
+        if choice:
+            client_db.soft_delete(self._selected_ic)
+            self._after_client_change(f"Soft-deleted {client['name']}.")
+        else:
+            confirm = simpledialog.askstring(
+                "Hard delete confirm",
+                f"This is permanent. Type the client's name to confirm:\n\n{client['name']}",
+                parent=self)
+            if confirm and confirm.strip().upper() == client["name"].strip().upper():
+                client_db.hard_delete(self._selected_ic)
+                self._after_client_change(f"Hard-deleted {client['name']}.")
+            else:
+                messagebox.showinfo("Cancelled",
+                                    "Name didn't match — nothing deleted.")
+
+    def _after_client_change(self, status_msg: str):
+        """Refresh master_data + search list after Add/Edit/Delete."""
+        self.master_data = self._load_master_data()
+        self._selected_ic = None
+        self.lbl_selected.config(text="No client selected.", fg="gray")
+        self._on_search_changed()
+        self._set_status(status_msg, "green")
 
     # ── Session context ───────────────────────────────────────────────────────
 
@@ -541,17 +697,17 @@ class FormFillerApp(tk.Tk):
         self._run_fill(selected, app, label=f"{len(selected)} client(s)")
 
     def _fill_single(self, app: dict):
-        name = self.var_client.get() if hasattr(self, "var_client") else ""
-        ic   = self._ic_for_name(name)
-        if not ic:
-            messagebox.showwarning("No client", "Please select a client.")
+        ic = getattr(self, "_selected_ic", None)
+        if not ic or ic not in self.master_data:
+            messagebox.showwarning("No client",
+                                   "Tick a client in the search list first.")
             return
         client = dict(self.master_data[ic])
         for col, var in self._single_entries.items():
             v = var.get().strip()
             if v:
                 client[col] = v
-        self._run_fill([client], app, label=name)
+        self._run_fill([client], app, label=client.get("name", ""))
 
     def _run_fill(self, clients: list[dict], app: dict, label: str = ""):
         try:
@@ -805,6 +961,82 @@ class FormFillerApp(tk.Tk):
 
     def _set_status(self, msg: str, color: str = "gray"):
         self.lbl_status.config(text=f"  {msg}", fg=color)
+
+
+class ClientFormDialog(tk.Toplevel):
+    """Add or Edit a client. mode = 'add' | 'edit'."""
+
+    FIELDS = [
+        ("ic_number",      "IC number",      True),   # (key, label, required)
+        ("name",           "Name",           True),
+        ("cif_no",         "CIF no",         False),
+        ("phone",          "Phone",          False),
+        ("email",          "Email",          False),
+        ("address_line1",  "Address line 1", False),
+        ("address_line2",  "Address line 2", False),
+        ("city",           "City",           False),
+        ("state",          "State",          False),
+        ("postcode",       "Postcode",       False),
+        ("dob",            "DOB (dd/mm/yyyy)", False),
+        ("occupation",     "Occupation",     False),
+        ("notes",          "Notes",          False),
+    ]
+
+    def __init__(self, parent, mode: str = "add", client: dict | None = None):
+        super().__init__(parent)
+        self.title("Add Client" if mode == "add" else "Edit Client")
+        self.geometry("440x540")
+        self.resizable(False, False)
+        self.grab_set()
+        self.result: dict | None = None
+        self._mode = mode
+        self._original = client or {}
+
+        self._vars: dict[str, tk.StringVar] = {}
+        for key, label, required in self.FIELDS:
+            row = tk.Frame(self)
+            row.pack(fill=tk.X, padx=12, pady=2)
+            tag = label + (" *" if required else "")
+            tk.Label(row, text=tag, width=18, anchor="w"
+                     ).pack(side=tk.LEFT)
+            v = tk.StringVar(value=str(self._original.get(key) or ""))
+            self._vars[key] = v
+            entry = tk.Entry(row, textvariable=v, width=28)
+            entry.pack(side=tk.LEFT)
+            if mode == "edit" and key == "ic_number":
+                entry.config(state="disabled")  # IC is the PK; can't change
+
+        # Permanent flag
+        flag_row = tk.Frame(self)
+        flag_row.pack(fill=tk.X, padx=12, pady=(8, 4))
+        self.var_permanent = tk.BooleanVar(
+            value=bool(self._original.get("permanent")))
+        tk.Checkbutton(flag_row,
+                       text="⭐ Mark Permanent (survives future monthly imports)",
+                       variable=self.var_permanent).pack(anchor="w")
+
+        # Action buttons
+        btn_row = tk.Frame(self); btn_row.pack(fill=tk.X, padx=12, pady=12)
+        tk.Button(btn_row, text="Save", width=10, bg="#28a745", fg="white",
+                  command=self._save).pack(side=tk.LEFT, padx=(0, 8))
+        tk.Button(btn_row, text="Cancel", width=10,
+                  command=self.destroy).pack(side=tk.LEFT)
+
+    def _save(self):
+        data: dict = {}
+        for key, _, required in self.FIELDS:
+            val = self._vars[key].get().strip()
+            if required and not val:
+                messagebox.showerror("Missing field",
+                                     f"{key.replace('_', ' ').title()} is required.")
+                return
+            data[key] = val
+        data["permanent"] = self.var_permanent.get()
+        # In edit mode we don't need to send ic_number through update()
+        if self._mode == "edit":
+            data.pop("ic_number", None)
+        self.result = data
+        self.destroy()
 
 
 if __name__ == "__main__":

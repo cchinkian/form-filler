@@ -9,6 +9,8 @@ zzz_*
 
 # PDPA — never commit real client data or RM personal settings
 data/clients.xlsx
+data/client_db.db
+data/client_db.db-journal
 data/fill_log.csv
 data/state.json
 config/settings.json
