@@ -8,7 +8,7 @@ Path policy:
   - On every launch, settings.json is backed up to config/backups/settings_YYYYMMDD_HHMMSS.json.
     Last 100 backups retained.
 
-P3-10: find_template() hashes the PDF and warns if it changed since mapping.
+P3-10: find_template() uses the single PDF in each form folder.
 P3-11: save_forms() backs up forms.json before overwriting.
 P1-3:  health_check() verifies forms_folder + mapped subfolders.
 """
@@ -177,18 +177,14 @@ def find_template(settings: dict, template_subfolder: str,
     """
     Find the single PDF at the top level of a form subfolder.
 
-    Surrender logic (filename-based):
-      - forms.json stores template_filename = last known PDF name
-      - If current PDF has a DIFFERENT name → form is surrendered
-      - Surrendered forms: raises TemplateSurrenderedError unless test_mode=True
-      - test_mode=True → returns the new PDF path with a _TEST_ fill warning
-
     Compliance guard:
       - Zero PDFs → FileNotFoundError
       - >1 PDF → ValueError (must keep exactly one at top level)
 
-    Hash check (content-based, secondary):
-      - If filename matches but hash differs → TemplateChangedWarning
+    Filename policy:
+      - The PDF filename is intentionally not part of routing.
+      - If the folder has exactly one PDF, that PDF is the template.
+      - This lets users rename the merged PDF freely without reconfiguring.
     """
     forms_folder = forms_folder_path(settings)
     subfolder    = forms_folder / template_subfolder
@@ -210,41 +206,6 @@ def find_template(settings: dict, template_subfolder: str,
 
     pdf_path = pdfs[0]
 
-    if form_config:
-        stored_name = form_config.get("template_filename", "")
-        stored_hash = form_config.get("template_hash", "")
-        form_label  = form_config.get("name", template_subfolder)
-
-        # Filename changed → surrender (primary check)
-        if stored_name and pdf_path.name != stored_name:
-            if not test_mode:
-                raise TemplateSurrenderedError(
-                    f"Form PDF was replaced — old coordinates are surrendered.\n\n"
-                    f"Form:     {form_label}\n"
-                    f"Was:      {stored_name}\n"
-                    f"Now:      {pdf_path.name}\n\n"
-                    "Re-map this form in CoordPicker to restore normal fills.\n"
-                    "Or click 'Test Fill' to preview with old coordinates "
-                    "(output will be marked _TEST_).",
-                    pdf_path, stored_name
-                )
-            # test_mode: return path anyway (caller adds _TEST_ prefix)
-            return pdf_path
-
-        # Hash check — runs when:
-        #   (a) stored_name matches current filename (same file, check content), OR
-        #   (b) no stored_name (old format without filename tracking, check hash only)
-        if stored_hash:
-            current_hash = _md5(pdf_path)
-            if current_hash != stored_hash:
-                raise TemplateChangedWarning(
-                    f"PDF content changed since last mapping.\n"
-                    f"Form: {form_label}\n"
-                    f"File: {pdf_path.name}\n\n"
-                    "Re-map in CoordPicker to update field positions.",
-                    pdf_path
-                )
-
     return pdf_path
 
 
@@ -252,27 +213,12 @@ def compute_template_hash(pdf_path: Path) -> str:
     return _md5(pdf_path)
 
 
-class TemplateChangedWarning(Exception):
-    """Same filename, different content — coordinates may be off."""
-    def __init__(self, message: str, pdf_path: Path):
-        super().__init__(message)
-        self.pdf_path = pdf_path
-
-
-class TemplateSurrenderedError(Exception):
-    """PDF filename changed — coordinates are surrendered. Test-only until re-mapped."""
-    def __init__(self, message: str, pdf_path: Path, old_filename: str):
-        super().__init__(message)
-        self.pdf_path    = pdf_path
-        self.old_filename = old_filename
-
-
 # ── Health check ──────────────────────────────────────────────────────────────
 
 def health_check(settings: dict, forms: dict) -> list[dict]:
     """
     Verify forms_folder + each mapped form subfolder.
-    Statuses: ok | warn | error | surrendered | empty | unmapped
+    Statuses: ok | warn | error | empty | unmapped
     Also reports discovered subfolders not yet in forms.json (unmapped).
     """
     results = []
@@ -318,17 +264,8 @@ def health_check(settings: dict, forms: dict) -> list[dict]:
             results.append({"name": form_id, "status": "warn",
                             "message": f"Multiple PDFs: {names}"})
         else:
-            current_name   = pdfs[0].name
-            stored_name    = form_cfg.get("template_filename", "")
-            if stored_name and current_name != stored_name:
-                results.append({
-                    "name": form_id, "status": "surrendered",
-                    "message": (f"PDF replaced: {stored_name} → {current_name}. "
-                                "Re-map in CoordPicker. Test fills allowed.")
-                })
-            else:
-                results.append({"name": form_id, "status": "ok",
-                                "message": current_name})
+            results.append({"name": form_id, "status": "ok",
+                            "message": pdfs[0].name})
 
     # Report unregistered subfolders (discovered but not in forms.json)
     for sub in scan_forms_folder(settings):

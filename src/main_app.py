@@ -18,7 +18,7 @@ import sys
 import platform
 import subprocess
 import tkinter as tk
-from tkinter import ttk, messagebox, filedialog
+from tkinter import ttk, messagebox, filedialog, simpledialog
 from pathlib import Path
 from datetime import date, datetime
 
@@ -29,7 +29,6 @@ import config_loader
 import excel_reader
 import pdf_engine
 from excel_reader import ExcelLockedError
-from config_loader import TemplateChangedWarning, TemplateSurrenderedError
 
 try:
     from tkcalendar import DateEntry
@@ -38,9 +37,12 @@ except ImportError:
     HAS_TKCALENDAR = False
 
 _MASTER_COLS = {
-    "name", "ic_number", "phone", "email",
+    "name", "ic_number", "passport_number", "cif_no", "phone", "email",
     "address_line1", "address_line2", "city",
     "state", "postcode", "dob", "occupation",
+}
+_AUTO_CONTEXT_COLS = {
+    "date", "rm_branch", "rm_name", "staff_id", "fimm_id", "ippc_id",
 }
 LABEL_W = 22
 
@@ -60,10 +62,12 @@ class FormFillerApp(tk.Tk):
         self.master_data  = {}
         self.rm_profile   = {}
         self.xlsx_path    = None
-        self._mode        = tk.StringVar(value="bulk")
+        self._mode        = tk.StringVar(value="single")
         self._bulk_vars   = []
         self._single_entries = {}
         self._first_run_msgs = []
+        self._selected_ic: str | None = None
+        self._search_text = ""
 
         # Backup settings.json on every launch (P3-4)
         try:
@@ -77,15 +81,13 @@ class FormFillerApp(tk.Tk):
     # ── UI ────────────────────────────────────────────────────────────────────
 
     def _build_ui(self):
-        # Row 1 — Application + Branch + Date + Mode
+        # Row 1 — Session controls
         top = tk.Frame(self, pady=6)
         top.pack(fill=tk.X, padx=12)
 
-        tk.Label(top, text="Application:").pack(side=tk.LEFT)
         self.var_app = tk.StringVar()
-        self.cmb_app = ttk.Combobox(top, textvariable=self.var_app,
+        self.cmb_app = ttk.Combobox(self, textvariable=self.var_app,
                                     state="readonly", width=26)
-        self.cmb_app.pack(side=tk.LEFT, padx=(4, 8))
         self.cmb_app.bind("<<ComboboxSelected>>", self._on_app_change)
 
         tk.Label(top, text="Branch:").pack(side=tk.LEFT)
@@ -108,20 +110,12 @@ class FormFillerApp(tk.Tk):
             tk.Entry(top, textvariable=self.var_date, width=12
                      ).pack(side=tk.LEFT, padx=(4, 8))
 
-        tk.Label(top, text="Mode:").pack(side=tk.LEFT, padx=(4, 4))
-        tk.Radiobutton(top, text="Bulk",   variable=self._mode,
-                       value="bulk",   command=self._on_mode_change).pack(side=tk.LEFT)
-        tk.Radiobutton(top, text="Single", variable=self._mode,
-                       value="single", command=self._on_mode_change).pack(side=tk.LEFT)
-
         tk.Button(top, text="↻", width=3,
                   command=self._load_all).pack(side=tk.LEFT, padx=(8, 0))
 
         # Row 2 — Utility buttons
         util = tk.Frame(self, pady=2)
         util.pack(fill=tk.X, padx=12)
-        tk.Button(util, text="📊 Open Excel",
-                  command=self._open_excel).pack(side=tk.LEFT, padx=(0, 4))
         tk.Button(util, text="🗂 CoordPicker",
                   command=self._open_coord_picker).pack(side=tk.LEFT, padx=(0, 4))
         tk.Button(util, text="⚙ Settings",
@@ -152,10 +146,9 @@ class FormFillerApp(tk.Tk):
             bot, text="▶ Execute All", width=14, height=2,
             bg="#155724", fg="white", activebackground="#0d3d18",
             command=self._execute_all)
-        self.btn_exec_all.pack(side=tk.LEFT, padx=(0, 4))
 
         self.btn_fill = tk.Button(
-            bot, text="Fill Selected", width=14, height=2,
+            bot, text="Generate PDF", width=14, height=2,
             bg="#28a745", fg="white", activebackground="#1e7e34",
             command=self._on_fill)
         self.btn_fill.pack(side=tk.LEFT, padx=(0, 8))
@@ -191,8 +184,8 @@ class FormFillerApp(tk.Tk):
                     f"Created output folder: {config_loader.output_folder_path(self.settings)}")
             if xlsx_info.get("copied"):
                 self._first_run_msgs.append(
-                    "Created data/clients.xlsx from clients_template.xlsx — "
-                    "open it (📊 Open Excel) and fill in RM_Profile + your clients.")
+                    "Created data/clients.xlsx from clients_template.xlsx "
+                    "for RM_Profile/default data setup.")
             if xlsx_info.get("source_missing"):
                 self._first_run_msgs.append(
                     "Neither clients.xlsx nor clients_template.xlsx exists in data/. "
@@ -289,7 +282,6 @@ class FormFillerApp(tk.Tk):
 
         errors      = [r for r in results if r["status"] == "error"]
         warns       = [r for r in results if r["status"] == "warn"]
-        surrendered = [r for r in results if r["status"] == "surrendered"]
         unmapped    = [r for r in results if r["status"] == "unmapped"]
         empty       = [r for r in results if r["status"] == "empty"]
         ok          = [r for r in results if r["status"] == "ok"]
@@ -306,7 +298,6 @@ class FormFillerApp(tk.Tk):
 
         parts = []
         if ok:          parts.append(f"✓ {len(ok)} ready")
-        if surrendered: parts.append(f"🔒 {len(surrendered)} surrendered")
         if unmapped:    parts.append(f"📂 {len(unmapped)} unmapped")
         if warns:       parts.append(f"⚠ {len(warns)} warning(s)")
         if errors:
@@ -331,6 +322,14 @@ class FormFillerApp(tk.Tk):
         self._save_session()
         self._rebuild_panel()
 
+    def _switch_to_sales(self):
+        self._mode.set("single")
+        self._on_mode_change()
+
+    def _switch_to_bulk(self):
+        self._mode.set("bulk")
+        self._on_mode_change()
+
     def _save_session(self):
         config_loader.save_state({
             "last_app":    self.var_app.get(),
@@ -350,7 +349,7 @@ class FormFillerApp(tk.Tk):
 
         is_bulk = self._mode.get() == "bulk"
         self.btn_exec_all.config(state=tk.NORMAL if is_bulk else tk.DISABLED)
-        self.btn_fill.config(text="Fill Selected" if is_bulk else "Fill & Save")
+        self.btn_fill.config(text="Fill Selected" if is_bulk else "Generate PDF")
 
         if is_bulk:
             self._build_bulk_panel(app)
@@ -428,19 +427,20 @@ class FormFillerApp(tk.Tk):
     # ── Single panel ──────────────────────────────────────────────────────────
 
     def _build_single_panel(self, app: dict):
-        sheet = app.get("data_sheet", "Master")
-        self._single_sheet = sheet
-        self._selected_ic: str | None = None
+        self._single_sheet = app.get("data_sheet", "Master")
+        if self._selected_ic and self._selected_ic not in self.master_data:
+            self._selected_ic = None
 
         # Search row
         srch = tk.Frame(self._panel)
         srch.pack(fill=tk.X, pady=(4, 2))
-        tk.Label(srch, text="Search:", width=8, anchor="w").pack(side=tk.LEFT)
-        self.var_search = tk.StringVar()
+        tk.Label(srch, text="1. Search customer:", width=18, anchor="w",
+                 font=("", 9, "bold")).pack(side=tk.LEFT)
+        self.var_search = tk.StringVar(value=self._search_text)
         self.var_search.trace_add("write", lambda *_: self._on_search_changed())
         ent = tk.Entry(srch, textvariable=self.var_search, width=32)
         ent.pack(side=tk.LEFT, padx=(0, 4))
-        tk.Label(srch, text="(full IC or partial name)",
+        tk.Label(srch, text="Name / IC / Passport / CIF",
                  fg="gray", font=("", 8)).pack(side=tk.LEFT)
 
         tk.Button(srch, text="➕ Add",
@@ -463,7 +463,7 @@ class FormFillerApp(tk.Tk):
         self.lst_clients.config(yscrollcommand=sb.set)
         self.lst_clients.bind("<<ListboxSelect>>",
                                lambda _: self._on_client_pick())
-        self._render_search_results(client_db.list_all(active_only=True))
+        self._render_search_results(client_db.search(self._search_text, limit=50))
 
         # Selected client banner
         self.lbl_selected = tk.Label(self._panel,
@@ -471,14 +471,22 @@ class FormFillerApp(tk.Tk):
                                       anchor="w", fg="gray",
                                       font=("", 9, "bold"))
         self.lbl_selected.pack(fill=tk.X, padx=4, pady=(0, 2))
+        self._refresh_selected_banner()
 
         ttk.Separator(self._panel, orient="horizontal").pack(
             fill=tk.X, pady=(2, 4))
 
-        try:
-            headers = excel_reader.get_sheet_headers(self.xlsx_path, sheet)
-        except ExcelLockedError:
-            headers = []
+        form_row = tk.Frame(self._panel)
+        form_row.pack(fill=tk.X, pady=(2, 6))
+        tk.Label(form_row, text="2. Choose form:", width=18, anchor="w",
+                 font=("", 9, "bold")).pack(side=tk.LEFT)
+        self.cmb_app_single = ttk.Combobox(
+            form_row, textvariable=self.var_app, state="readonly", width=34)
+        self.cmb_app_single["values"] = [a["name"] for a in self.applications]
+        self.cmb_app_single.pack(side=tk.LEFT, padx=(0, 6))
+        self.cmb_app_single.bind("<<ComboboxSelected>>", self._on_app_change)
+        tk.Label(form_row, text="Fields below come from this form's mapping.",
+                 fg="gray", font=("", 8)).pack(side=tk.LEFT)
 
         outer = tk.Frame(self._panel)
         outer.pack(fill=tk.BOTH, expand=True)
@@ -493,18 +501,22 @@ class FormFillerApp(tk.Tk):
         canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
         sb.pack(side=tk.RIGHT, fill=tk.Y)
 
-        if not headers:
+        fields = self._data_fields_for_app(app)
+        if not fields:
             tk.Label(inner,
-                     text=f"No transaction columns in '{sheet}' sheet.\n"
-                          "All data from Master sheet.",
+                     text="3. Fill missing fields\n\nNo extra data fields are required by this form.\n"
+                          "Customer, date, branch, and RM details will be filled from Master DB/session.",
                      fg="gray", justify="left").pack(anchor="w", pady=8, padx=4)
         else:
             tk.Label(inner,
-                     text=f"{len(headers)} transaction field(s) from '{sheet}'. "
-                          "Auto-filled if client already has a row.",
+                     text=f"3. Fill missing fields ({len(fields)})",
+                     font=("", 9, "bold"),
+                     justify="left").pack(anchor="w", padx=4, pady=(2, 2))
+            tk.Label(inner,
+                     text="Only fields not handled by Master DB/session are shown here.",
                      fg="gray", font=("", 8),
-                     justify="left").pack(anchor="w", padx=4, pady=(2, 6))
-            for col in headers:
+                     justify="left").pack(anchor="w", padx=4, pady=(0, 6))
+            for col in fields:
                 r = tk.Frame(inner)
                 r.pack(fill=tk.X, pady=2, padx=4)
                 tk.Label(r, text=col.replace("_", " ").title() + ":",
@@ -513,7 +525,29 @@ class FormFillerApp(tk.Tk):
                 tk.Entry(r, textvariable=var, width=40).pack(side=tk.LEFT)
                 self._single_entries[col] = var
 
-        self._autofill_single(sheet)
+        self._autofill_single(self._single_sheet)
+
+    def _data_fields_for_app(self, app: dict) -> list[str]:
+        shared = self.forms.get("_shared_fields", {})
+        fields = []
+        seen = set()
+        for form_id in app.get("forms", []):
+            form_cfg = self.forms.get(form_id, {})
+            for raw_field in form_cfg.get("fields", []):
+                field = dict(shared.get(raw_field.get("shared"), {}))
+                field.update(raw_field)
+                source = field.get("source", "data")
+                name = (field.get("data_key") or field.get("name") or "").strip()
+                if (
+                    source == "data"
+                    and name
+                    and name not in _MASTER_COLS
+                    and name not in _AUTO_CONTEXT_COLS
+                    and name not in seen
+                ):
+                    seen.add(name)
+                    fields.append(name)
+        return fields
 
     def _autofill_single(self, sheet: str):
         ic = self._selected_ic if hasattr(self, "_selected_ic") else None
@@ -541,14 +575,8 @@ class FormFillerApp(tk.Tk):
 
     def _on_search_changed(self):
         q = self.var_search.get().strip()
-        if not q:
-            results = client_db.list_all(active_only=True, limit=200)
-        elif q.replace("-", "").replace(" ", "").isdigit():
-            # Looks like an IC — full match
-            hit = client_db.by_ic(q)
-            results = [hit] if hit else []
-        else:
-            results = client_db.by_name(q, limit=50)
+        self._search_text = q
+        results = client_db.search(q, limit=50)
         self._render_search_results(results)
 
     def _render_search_results(self, results: list[dict]):
@@ -558,7 +586,9 @@ class FormFillerApp(tk.Tk):
         self._search_results = results
         for c in results:
             star = " ⭐" if c.get("permanent") else ""
-            label = f"  {c['name']:<32s}  {c['ic_number']}{star}"
+            id_part = c.get("ic_number") or c.get("passport_number") or "-"
+            cif = c.get("cif_no") or "-"
+            label = f"  {c['name']:<30s}  {id_part:<14s}  CIF:{cif}{star}"
             self.lst_clients.insert(tk.END, label)
 
     def _on_client_pick(self):
@@ -567,11 +597,23 @@ class FormFillerApp(tk.Tk):
             return
         client = self._search_results[sel[0]]
         self._selected_ic = client["ic_number"]
-        star = " ⭐ permanent" if client.get("permanent") else ""
-        self.lbl_selected.config(
-            text=f"Selected: {client['name']}  ({client['ic_number']}){star}",
-            fg="#155724")
+        self._refresh_selected_banner(client)
         self._autofill_single(getattr(self, "_single_sheet", "Master"))
+
+    def _refresh_selected_banner(self, client: dict | None = None):
+        if not hasattr(self, "lbl_selected"):
+            return
+        if client is None and self._selected_ic:
+            client = self.master_data.get(self._selected_ic)
+        if not client:
+            self.lbl_selected.config(text="No client selected.", fg="gray")
+            return
+        star = " ⭐ permanent" if client.get("permanent") else ""
+        id_part = client.get("ic_number") or client.get("passport_number") or "-"
+        cif = client.get("cif_no") or "-"
+        self.lbl_selected.config(
+            text=f"Selected: {client['name']}  ID: {id_part}  CIF: {cif}{star}",
+            fg="#155724")
 
     def _open_add_client(self):
         dlg = ClientFormDialog(self, mode="add")
@@ -703,6 +745,8 @@ class FormFillerApp(tk.Tk):
                                    "Tick a client in the search list first.")
             return
         client = dict(self.master_data[ic])
+        if client.get("passport_number") and not client.get("ic_number"):
+            client["ic_number"] = client["passport_number"]
         for col, var in self._single_entries.items():
             v = var.get().strip()
             if v:
@@ -742,65 +786,6 @@ class FormFillerApp(tk.Tk):
                 )
                 saved.extend(results)
                 all_warnings.extend(warnings)
-            except TemplateSurrenderedError as e:
-                if messagebox.askyesno(
-                    "Form Surrendered — Test Fill?",
-                    f"{e}\n\nRun TEST FILL with old coordinates?\n"
-                    "(Output will be prefixed _TEST_ — do not submit)",
-                    icon="warning"
-                ):
-                    def _test_finder(settings, subfolder, form_cfg=None):
-                        return config_loader.find_template(
-                            settings, subfolder, form_cfg, test_mode=True)
-                    try:
-                        results, warnings = pdf_engine.fill_bundle(
-                            application=app,
-                            forms_config=self.forms,
-                            client=client,
-                            output_folder=output_folder,
-                            settings=self.settings,
-                            find_template_fn=_test_finder,
-                            log_path=log,
-                            test_mode=True,
-                            rm_profile=self.rm_profile,
-                            session=session_ctx,
-                        )
-                        saved.extend(results)
-                        all_warnings.extend(warnings)
-                    except Exception as e2:
-                        errors.append(f"{client.get('name', '?')}: {e2}")
-                else:
-                    errors.append(
-                        f"{client.get('name', '?')}: skipped — form surrendered. "
-                        "Re-map in CoordPicker.")
-
-            except TemplateChangedWarning as e:
-                if messagebox.askyesno(
-                    "Form content changed",
-                    f"{e}\n\nFill anyway with current coordinates?",
-                    icon="warning"
-                ):
-                    def _no_hash(settings, subfolder, form_cfg=None):
-                        return config_loader.find_template(
-                            settings, subfolder, None)
-                    try:
-                        results, warnings = pdf_engine.fill_bundle(
-                            application=app,
-                            forms_config=self.forms,
-                            client=client,
-                            output_folder=output_folder,
-                            settings=self.settings,
-                            find_template_fn=_no_hash,
-                            log_path=log,
-                            rm_profile=self.rm_profile,
-                            session=session_ctx,
-                        )
-                        saved.extend(results)
-                        all_warnings.extend(warnings)
-                    except Exception as e2:
-                        errors.append(f"{client.get('name', '?')}: {e2}")
-                else:
-                    errors.append(f"{client.get('name', '?')}: skipped (content changed)")
             except Exception as e:
                 errors.append(f"{client.get('name', '?')}: {e}")
 
@@ -968,6 +953,7 @@ class ClientFormDialog(tk.Toplevel):
 
     FIELDS = [
         ("ic_number",      "IC number",      True),   # (key, label, required)
+        ("passport_number","Passport number",False),
         ("name",           "Name",           True),
         ("cif_no",         "CIF no",         False),
         ("phone",          "Phone",          False),

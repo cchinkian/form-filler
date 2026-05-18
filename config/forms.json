@@ -26,7 +26,7 @@
       "Copy this block, rename the key (e.g. 'kyc_single'), fill coordinates.",
       "Use 'shared' to reference _shared_fields — only x, y, page needed.",
       "Use 'name' + full field def for form-specific fields.",
-      "template_hash is set automatically by CoordPicker when you save.",
+      "Each form folder should have exactly one PDF; the PDF filename can be anything.",
       "Source types: data | rm_profile | session | fixed | auto."
     ],
     "name": "Form Display Name",

@@ -76,3 +76,56 @@
   - Filename changed (v1.pdf → v2.pdf) → TemplateSurrenderedError (strong: block real fills)
   - Same filename, content changed → TemplateChangedWarning (soft: offer to fill anyway)
 - Keep them as separate exception types — different UX responses needed
+
+### 2026-05-05: Hardcoded Windows paths kill pen-drive portability
+- Original `settings.json` had `forms_folder = "C:\Users\460391\Documents\..."` — broke on any other PC
+- Fix: default paths are now relative (`"forms"`, `"filled"`) — `_base_dir()` resolves them to siblings of the EXE
+- Lesson: for portable apps, NEVER hardcode user-specific Windows paths in committed defaults; always use relative + base-dir resolution
+
+### 2026-05-05: PowerShell `if exist` — only works in cmd, not pwsh
+- GitHub Actions Windows runners default to PowerShell. `if exist file del file` fails with "Missing '(' after 'if'"
+- Fix: `shell: cmd` directive on the step, OR rewrite to PowerShell syntax `if (Test-Path file) { del file }`
+- Lesson: when the step uses cmd-style batch syntax, force `shell: cmd` explicitly
+
+### 2026-05-05: tkcalendar.DateEntry needs Babel locale data — not auto-bundled
+- `--collect-all tkcalendar` does NOT pull `babel` — frozen EXE crashes at runtime when DateEntry tries to format dates
+- Fix: `--collect-all babel --hidden-import babel.numbers` in PyInstaller args + add `babel` to requirements.txt
+- Lesson: when bundling C-extension or locale-aware libs, audit transitive deps; collect-all the package is not enough
+
+### 2026-05-05: CoordPicker silently stripped `_shared_fields` from forms.json
+- `coord_picker._save()` had: `clean = {k: v for k, v in existing.items() if not k.startswith("_")}`
+- This was meant to drop the `_TEMPLATE` help block — but `_shared_fields` got dropped too
+- After our Phase-3 refactor that put rm_name/staff_id/fimm_id/ippc_id/rm_branch/date INTO `_shared_fields`, this silently broke the new flow on first form save
+- Fix: preserve all internal blocks, only overwrite the form being saved
+- Lesson: be VERY careful with `startswith("_")` filters — any future internal block needs to be preserved, not assumed disposable. Use exact-name allowlists when removing.
+
+### 2026-05-05: pikepdf `is_encrypted` detection misses owner-password-only PDFs
+- Initial `is_encrypted()` opened with no password and caught `pikepdf.PasswordError` — return True
+- This MISSED PDFs with only an owner password (restrictions but no user password) — those open fine but are still encrypted
+- Fix: open the PDF AND check `bool(pdf.is_encrypted)` after open; both signals matter
+- Lesson: pikepdf's `is_encrypted` attribute is the canonical check; don't infer from open-success alone
+
+### 2026-05-05: Reorder duplicates produce copies, but rotate cumulates angles
+- Same `parse_pages()` output `[3, 3, 3]` from spec `"3,3,3"` has DIFFERENT meaning per op
+  - Reorder: page 3 appears 3 times in output — intentional (allows duplication)
+  - Rotate: page 3 gets rotated 3× cumulatively (90 → 180 → 270) — surprise bug
+- Fix: each op decides whether to dedupe before iterating; not a parser concern
+- Lesson: the page-list parser is a primitive — semantics are owner-specific. Don't assume one consumer's needs apply to all.
+
+### 2026-05-06: Daughter DBs vs central DB — separation of concerns wins for portability
+- Considered extending `~/Documents/works/client_master.db` (existing central DB used by many projects) with form-fill demographics
+- BLOCKED by pen-drive constraint: form_filler runs on bank PC, can't reach Mac filesystem
+- Decision: keep `data/client_db.db` separate, ship on pen drive. No data overlap with central DB (different concerns: identity-mapping vs form-demographics)
+- Lesson: when a portable subsystem and a central system have ZERO column overlap, separate DBs is correct — don't force a single source of truth across deployment boundaries
+
+### 2026-05-06: Field-source tagging beats client-level lifecycle for hybrid data
+- For Phase 1B (monthly bank Excel import), naive design: client-level "permanent vs monthly" flag
+- Problem: even non-permanent clients have FIELDS that should never be overwritten by import (address, phone — typed by RM, not in bank export)
+- Better: split fields into "bank-managed" (overwritten on import) and "user-entered sticky" (never touched). PLUS client-level permanent flag for the lifecycle question
+- Lesson: hybrid data sources need TWO orthogonal axes: (1) which fields refresh, (2) which clients persist. Don't conflate them.
+### 2026-05-19: Keep the product workflow clean; move old concepts out of the UI
+- The daily workflow is `Search customer → choose form → fill missing fields → generate PDF`.
+- Excel-first bulk processing is useful as a reference, but it should not be visible in the main product unless real usage proves it is needed.
+- Dynamic PDF module composition is overkill for the actual use case. A folder with one complete merged PDF is easier to maintain.
+- PDF filename/hash surrender conflicts with the user's real workflow. Folder identity + exactly one top-level PDF is the right rule.
+- Keep `CoordPicker` separate because PyMuPDF/Pillow are heavy; the main FormFiller should stay small and stable.

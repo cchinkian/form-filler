@@ -2,7 +2,7 @@
 Client master DB — SQLite store for client demographics + lifecycle.
 
 Replaces the old Master sheet in clients.xlsx as the canonical source for:
-  ic_number (PK), name, cif_no, phone, email, address, dob, etc.
+  ic_number (PK), passport_number, name, cif_no, phone, email, address, dob, etc.
 
 Two-tier lifecycle (Phase 1A — manual only; Phase 1B will add monthly bank import):
   permanent = 1 → row never auto-removed by future monthly imports
@@ -63,6 +63,7 @@ def connect() -> sqlite3.Connection:
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS clients (
     ic_number              TEXT PRIMARY KEY,
+    passport_number        TEXT,
     name                   TEXT NOT NULL,
     cif_no                 TEXT,
 
@@ -101,6 +102,20 @@ def init_db() -> None:
     """Create tables + indexes if not exist."""
     with connect() as conn:
         conn.executescript(SCHEMA)
+        _ensure_columns(conn)
+
+
+def _ensure_columns(conn: sqlite3.Connection) -> None:
+    """Lightweight migrations for existing pen-drive databases."""
+    existing = {
+        row["name"]
+        for row in conn.execute("PRAGMA table_info(clients)").fetchall()
+    }
+    if "passport_number" not in existing:
+        conn.execute("ALTER TABLE clients ADD COLUMN passport_number TEXT")
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_clients_passport ON clients(passport_number)"
+    )
 
 
 # ── IC normalization (mirrors excel_reader.normalize_ic) ──────────────────────
@@ -116,7 +131,7 @@ def normalize_ic(raw) -> str:
 # ── Public column list (used for forms.json data resolution) ──────────────────
 
 USER_FIELDS = (
-    "ic_number", "name", "cif_no",
+    "ic_number", "passport_number", "name", "cif_no",
     "phone", "email",
     "address_line1", "address_line2", "city", "state", "postcode",
     "dob", "occupation", "notes",
@@ -148,13 +163,15 @@ def add(client: dict) -> str:
         conn.execute("""
             INSERT INTO clients (
                 ic_number, name, cif_no,
+                passport_number,
                 phone, email,
                 address_line1, address_line2, city, state, postcode,
                 dob, occupation, notes,
                 bank_fields, permanent, active, source
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, (
             ic, name, client.get("cif_no"),
+            client.get("passport_number"),
             client.get("phone"), client.get("email"),
             client.get("address_line1"), client.get("address_line2"),
             client.get("city"), client.get("state"), client.get("postcode"),
@@ -245,6 +262,65 @@ def by_name(substring: str, limit: int = 30,
         return [_row_to_dict(r) for r in rows]
 
 
+def by_cif(cif_no: str, include_inactive: bool = False) -> dict | None:
+    cif = (cif_no or "").strip()
+    if not cif:
+        return None
+    init_db()
+    with connect() as conn:
+        clause = "" if include_inactive else " AND active = 1"
+        row = conn.execute(
+            f"SELECT * FROM clients WHERE cif_no = ?{clause}",
+            (cif,)).fetchone()
+        return _row_to_dict(row) if row else None
+
+
+def by_passport(passport_number: str, include_inactive: bool = False) -> dict | None:
+    passport = (passport_number or "").strip()
+    if not passport:
+        return None
+    init_db()
+    with connect() as conn:
+        clause = "" if include_inactive else " AND active = 1"
+        row = conn.execute(
+            f"""SELECT * FROM clients
+                WHERE passport_number = ? COLLATE NOCASE{clause}""",
+            (passport,)).fetchone()
+        return _row_to_dict(row) if row else None
+
+
+def search(query: str, limit: int = 50,
+           include_inactive: bool = False) -> list[dict]:
+    """Search by full/partial name, IC, passport, or CIF."""
+    q = (query or "").strip()
+    if not q:
+        return list_all(active_only=not include_inactive, limit=limit)
+    digits = re.sub(r"[^0-9]", "", q)
+    init_db()
+    with connect() as conn:
+        clause = "" if include_inactive else " AND active = 1"
+        rows = conn.execute(
+            f"""SELECT * FROM clients
+                WHERE (
+                    name LIKE ? COLLATE NOCASE
+                    OR ic_number LIKE ?
+                    OR passport_number LIKE ? COLLATE NOCASE
+                    OR cif_no LIKE ? COLLATE NOCASE
+                ){clause}
+                ORDER BY
+                    CASE
+                        WHEN ic_number = ? THEN 0
+                        WHEN passport_number = ? COLLATE NOCASE THEN 1
+                        WHEN cif_no = ? COLLATE NOCASE THEN 2
+                        ELSE 3
+                    END,
+                    name COLLATE NOCASE
+                LIMIT ?""",
+            (f"%{q}%", f"%{digits or q}%", f"%{q}%", f"%{q}%",
+             digits or q, q, q, limit)).fetchall()
+        return [_row_to_dict(r) for r in rows]
+
+
 def list_all(active_only: bool = True, limit: int = 1000) -> list[dict]:
     init_db()
     with connect() as conn:
@@ -310,19 +386,19 @@ def upsert_from_import(client: dict, import_date: str) -> str:
         if existing:
             conn.execute("""
                 UPDATE clients SET
-                    name = ?, cif_no = ?, bank_fields = ?,
+                    name = ?, cif_no = ?, passport_number = ?, bank_fields = ?,
                     active = 1, last_seen_in_import = ?, updated_at = datetime('now')
                 WHERE ic_number = ?
-            """, (name, client.get("cif_no"), bank_fields_json,
+            """, (name, client.get("cif_no"), client.get("passport_number"), bank_fields_json,
                   import_date, ic))
         else:
             conn.execute("""
                 INSERT INTO clients (
-                    ic_number, name, cif_no, bank_fields,
+                    ic_number, name, cif_no, passport_number, bank_fields,
                     active, source, last_seen_in_import
-                ) VALUES (?, ?, ?, ?, 1, 'monthly_import', ?)
+                ) VALUES (?, ?, ?, ?, ?, 1, 'monthly_import', ?)
             """, (ic, name, client.get("cif_no"),
-                  bank_fields_json, import_date))
+                  client.get("passport_number"), bank_fields_json, import_date))
     return ic
 
 

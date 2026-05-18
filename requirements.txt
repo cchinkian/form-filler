@@ -4,3 +4,5 @@ reportlab
 tkcalendar
 babel
 pyinstaller
+PyMuPDF
+Pillow

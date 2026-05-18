@@ -13,6 +13,8 @@ import tkinter as tk
 from tkinter import ttk, filedialog, messagebox
 from pathlib import Path
 
+import openpyxl
+
 sys.path.insert(0, str(Path(__file__).parent))
 import config_loader
 
@@ -432,14 +434,71 @@ class CoordPickerApp(tk.Tk):
             "fields":             self._fields,
         }
         config_loader.save_forms(clean)
+        template_path = None
+        template_error = ""
+        try:
+            template_path = self._sync_excel_template(fid)
+        except PermissionError:
+            template_error = "\n\nExcel template was open/locked, so it was not updated."
+        except Exception as e:
+            template_error = f"\n\nExcel template was not updated: {e}"
         self._status(
             f"Saved {len(self._fields)} fields for '{fid}' → forms.json", "green")
+        template_msg = (
+            f"\n\nExcel template updated:\n{template_path}"
+            if template_path else template_error
+        )
         messagebox.showinfo(
             "Saved",
             f"'{fid}' saved to forms.json.\n"
             f"{len(self._fields)} field(s) across "
             f"{len({f['page'] for f in self._fields})} page(s)."
+            f"{template_msg}"
         )
+
+    def _sync_excel_template(self, form_id: str) -> Path | None:
+        headers = []
+        seen = set()
+        for field in self._fields:
+            if field.get("source", "data") != "data":
+                continue
+            name = field.get("name", "").strip()
+            if not name or name in seen:
+                continue
+            seen.add(name)
+            headers.append(name)
+
+        if not headers:
+            return None
+        for required in reversed(["ic_number", "name"]):
+            if required not in seen:
+                headers.insert(0, required)
+                seen.add(required)
+
+        path = config_loader.data_path(f"{form_id}_template.xlsx")
+        path.parent.mkdir(parents=True, exist_ok=True)
+
+        if path.exists():
+            wb = openpyxl.load_workbook(path)
+            ws = wb.active
+            existing = [
+                str(cell.value).strip()
+                for cell in ws[1]
+                if cell.value is not None and str(cell.value).strip()
+            ]
+            for header in headers:
+                if header not in existing:
+                    ws.cell(row=1, column=len(existing) + 1, value=header)
+                    existing.append(header)
+        else:
+            wb = openpyxl.Workbook()
+            ws = wb.active
+            ws.title = "Data"
+            ws.append(headers)
+
+        wb.save(path)
+        wb.close()
+        return path
 
     def _status(self, msg: str, color: str = "gray"):
         self.lbl_status.config(text=f"  {msg}", fg=color)
