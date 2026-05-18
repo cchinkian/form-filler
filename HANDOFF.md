@@ -21,15 +21,26 @@ Simplify FormFiller into the clean daily sales workflow:
   - Uses single-PDF folder lookup
   - Fills customer name, IC, CIF, amount, date
   - Verifies generated PDF text contains expected values
+- GitHub Actions Windows build ✅
+  - Run: `26045620068`
+  - Commit: `bcecd71`
+  - Artifact: `FormFiller-portable`
+  - Local downloaded copy: `build_artifacts/FormFiller-portable-26045620068/`
+  - Bundle contains `FormFiller.exe`, `CoordPicker.exe`, `GreenTest.exe`, `config/`, `data/`
 
 ### Product Decision
 - The active product should stay clean and focused on the 4-step sales flow.
 - Excel bulk workflow, dynamic PDF module composition, preview-first flow, and filename/hash surrender are deferred/removed from the product path.
 - CoordPicker remains a separate setup tool because it uses PyMuPDF/Pillow and should not bloat or destabilize FormFiller.exe.
 
-### Next Build Step
-- Build Windows `.exe` through GitHub Actions (`windows-latest`) because PyInstaller cannot cross-compile Windows EXEs from macOS.
-- After push, download the latest `FormFiller-portable` artifact and verify on Windows/bank PC.
+### Portable App Notes
+- No install required.
+- No admin permission required for normal use.
+- Keep the whole portable folder together and double-click `FormFiller.exe`.
+- The app does not install services or registry entries. It does keep working files inside its own folder: `data/client_db.db`, `filled/`, `data/fill_log.csv`, and `config/backups/`.
+
+### Next Step
+- Copy `build_artifacts/FormFiller-portable-26045620068/` to the user's working folder or pen drive, then test on the Windows/bank PC by double-clicking `FormFiller.exe`.
 
 ---
 

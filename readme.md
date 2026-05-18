@@ -105,6 +105,25 @@ git push
 # Contains: FormFiller.exe + CoordPicker.exe + GreenTest.exe + config/ + data/
 ```
 
+Latest downloaded build:
+
+```text
+build_artifacts/FormFiller-portable-26045620068/
+```
+
+## Install / Run
+
+No installation is needed. No admin permission is needed for normal use.
+
+Keep the full portable folder together and double-click `FormFiller.exe`.
+
+The software does not install background services or registry entries. It keeps working files inside its own folder:
+
+- `data/client_db.db`
+- `filled/`
+- `data/fill_log.csv`
+- `config/backups/`
+
 ## Running Tests (Mac development)
 ```bash
 cd ~/Documents/tools/form_filler
