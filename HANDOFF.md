@@ -22,11 +22,18 @@ Simplify FormFiller into the clean daily sales workflow:
   - Fills customer name, IC, CIF, amount, date
   - Verifies generated PDF text contains expected values
 - GitHub Actions Windows build ✅
-  - Run: `26045620068`
-  - Commit: `bcecd71`
+  - Run: `26045873626`
+  - Commit: `010fa0e`
   - Artifact: `FormFiller-portable`
-  - Local downloaded copy: `build_artifacts/FormFiller-portable-26045620068/`
+  - Local downloaded copy: `build_artifacts/FormFiller-portable-26045873626/`
   - Bundle contains `FormFiller.exe`, `CoordPicker.exe`, `GreenTest.exe`, `config/`, `data/`
+- GitHub Release download ✅
+  - https://github.com/cchinkian/form-filler/releases/tag/sales-flow-2026-05-19
+  - Simple latest URL: https://github.com/cchinkian/form-filler/releases/latest
+  - Direct download: https://github.com/cchinkian/form-filler/releases/latest/download/FormFiller-portable.zip
+  - Asset: `FormFiller-portable-26045873626.zip`
+  - Simple asset: `FormFiller-portable.zip`
+  - Unzip result: full folder `FormFiller-portable-26045873626/`; double-click `FormFiller.exe`
 
 ### Product Decision
 - The active product should stay clean and focused on the 4-step sales flow.
@@ -40,7 +47,7 @@ Simplify FormFiller into the clean daily sales workflow:
 - The app does not install services or registry entries. It does keep working files inside its own folder: `data/client_db.db`, `filled/`, `data/fill_log.csv`, and `config/backups/`.
 
 ### Next Step
-- Copy `build_artifacts/FormFiller-portable-26045620068/` to the user's working folder or pen drive, then test on the Windows/bank PC by double-clicking `FormFiller.exe`.
+- Copy `build_artifacts/FormFiller-portable-26045873626/` to the user's working folder or pen drive, then test on the Windows/bank PC by double-clicking `FormFiller.exe`.
 
 ---
 
