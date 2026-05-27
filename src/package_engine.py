@@ -116,6 +116,7 @@ def data_fields_for_procedure(
                 "label": field.get("DisplayLabel") or key.replace("_", " ").title(),
                 "required": bool(field.get("required") or field.get("Required")),
                 "source_form": source_code,
+                "excel_sheet": field.get("excel_sheet") or field.get("ExcelSheet") or "",
             })
     return rows
 
@@ -138,10 +139,15 @@ def missing_required_fields(
     return missing
 
 
-def _append_pdf(writer: pypdf.PdfWriter, path: Path) -> None:
+def _append_pdf(writer: pypdf.PdfWriter, path: Path) -> tuple[int, float, float]:
     reader = pypdf.PdfReader(str(path))
+    count = len(reader.pages)
+    last_width, last_height = 595.0, 842.0
     for page in reader.pages:
+        box = page.mediabox
+        last_width, last_height = float(box.width), float(box.height)
         writer.add_page(page)
+    return count, last_width, last_height
 
 
 def _add_blank_pages(writer: pypdf.PdfWriter, count: int, width: float = 595, height: float = 842) -> None:
@@ -155,6 +161,12 @@ def _source_mapping(forms_config: dict, source_form: dict) -> dict:
         "name": catalog.get_value(source_form, "DisplayName", key),
         "fields": [],
     })
+
+
+def _truthy(value) -> bool:
+    if isinstance(value, bool):
+        return value
+    return str(value or "").strip().lower() in {"1", "yes", "y", "true", "on"}
 
 
 def generate_package(
@@ -198,6 +210,7 @@ def generate_package(
     fill_data.setdefault("rm_code", rm_code)
 
     procedure_code = catalog.get_value(procedure, "ProcedureCode")
+    auto_blank_after_odd = _truthy(catalog.get_value(procedure, "AutoBlankAfterOdd", settings.get("auto_blank_after_odd", True)))
     output_path = output_path_for_client(
         output_root, fill_data, procedure, session,
         bulk_root=bulk_root, client_folder=client_folder
@@ -250,12 +263,14 @@ def generate_package(
             )
             if blanks:
                 warnings.append(f"{source_code}: missing required fields - {', '.join(blanks)}")
-            _append_pdf(writer, final_tmp)
+            page_count, last_width, last_height = _append_pdf(writer, final_tmp)
             source_count += 1
 
             extra_blank = int(catalog.get_value(item, "BlankPageCount", 0) or 0)
             if extra_blank:
-                _add_blank_pages(writer, extra_blank)
+                _add_blank_pages(writer, extra_blank, last_width, last_height)
+            elif auto_blank_after_odd and page_count % 2 == 1:
+                _add_blank_pages(writer, 1, last_width, last_height)
 
     if source_count == 0 and not writer.pages:
         raise ValueError(f"{procedure_code} has no source forms or blank pages.")

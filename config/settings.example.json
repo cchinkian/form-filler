@@ -4,7 +4,7 @@
     "Default folders are siblings of FormFiller.exe, so the app stays portable.",
     "customer_workbook can be .xlsx or .xlsm. The app reads saved/calculated values.",
     "Source PDF paths in source_forms.json are relative to forms_folder unless absolute.",
-    "Staff info (name, IC, ID, FIMM, IPPC, position, RM codes, branches) lives in data/clients.xlsx -> Staff_Profile sheet.",
+    "Staff info (name, IC, ID, FIMM, IPPC, position, RM codes, branches) lives in data/clients.xlsx -> default_staff sheet.",
     "Y coordinates in forms.json are from the BOTTOM of the page (A4 bottom=0, top=842).",
     "On every launch, the previous settings.json is copied to config/backups/ with a timestamp."
   ],
@@ -21,5 +21,6 @@
   "default_font": "Helvetica",
   "default_font_size": 10,
   "bulk_create_client_folders": true,
+  "auto_blank_after_odd": true,
   "auto_open_output": true
 }

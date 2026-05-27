@@ -22,7 +22,7 @@
     "staff_position":{"name": "staff_position","source": "staff_profile", "profile_key": "staff_position", "font_size": 9},
     "rm_name":      {"name": "rm_name",      "source": "staff_profile", "profile_key": "rm_name",   "font_size": 9},
 
-    "currency_myr": {"name": "currency_myr", "source": "fixed",      "value": "MYR", "font_size": 10}
+    "currency_label": {"name": "currency_label", "source": "fixed", "value": "MYR", "font_size": 10}
   },
 
   "_TEMPLATE": {
@@ -31,7 +31,7 @@
       "Use 'shared' to reference _shared_fields — only x, y, page needed.",
       "Use 'name' + full field def for form-specific fields.",
       "Each form folder should have exactly one PDF; the PDF filename can be anything.",
-      "Source types: data | staff_profile | session | fixed | auto."
+      "Source choices in Mapping Editor follow clients.xlsx sheet names, plus Session Input, Fixed Text, Auto Date."
     ],
     "name": "Form Display Name",
     "template_subfolder": "subfolder_inside_forms",
@@ -49,7 +49,7 @@
       {
         "_comment": "Form-specific field (not shared):",
         "name": "fd_amount", "page": 1, "x": 0, "y": 0,
-        "source": "data", "format": "currency_myr", "required": true
+        "source": "data", "format": "currency_2_decimals", "required": true
       },
       {
         "_comment": "Fixed value (never changes):",

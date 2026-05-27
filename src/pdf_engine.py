@@ -2,13 +2,11 @@
 PDF engine — coordinate-based text overlay for flat/scanned PDF forms.
 
 Field source types (per-field in forms.json):
-  data       — from Excel column (Master or batch sheet)
-  staff_profile — from Excel Staff_Profile sheet (staff_name, staff_id, fimm_id, etc.)
-  rm_profile — legacy alias for staff_profile
+  data       — from clients.xlsx sheet/column data
+  staff_profile — from default_staff sheet (staff_name, staff_id, fimm_id, etc.)
   session    — from runtime context (rm_branch, date) picked in top bar
-  settings   — from settings.json (legacy; kept for backward compat)
-  fixed      — hardcoded in forms.json value (currency, bank name, etc.)
-  auto       — generated at runtime (date, year, month) — superseded by 'session' for date
+  fixed      — hardcoded in forms.json value
+  auto       — generated at runtime (date, year, month)
 
 P3-9: _shared_fields support — common fields defined once, referenced by name.
 P1-4: Required blank fields prefix output with _REVIEW_ and return warnings.
@@ -51,21 +49,31 @@ def _expand_shared(fields: list[dict], shared: dict) -> list[dict]:
 def _format_value(raw, fmt: str) -> str:
     s = str(raw).strip() if not isinstance(raw, (datetime.datetime,
                                                    datetime.date)) else ""
-    if fmt == "currency_myr":
-        try:
-            n = float(str(raw).replace(",", "").replace("RM", "").strip())
-            return f"RM {n:,.2f}"
-        except (ValueError, TypeError):
-            return s
+    if not fmt or fmt == "text":
+        return _to_str(raw)
 
-    if fmt == "currency_no_symbol":
+    if fmt == "currency_2_decimals":
         try:
             n = float(str(raw).replace(",", "").replace("RM", "").strip())
             return f"{n:,.2f}"
         except (ValueError, TypeError):
             return s
 
-    if fmt in ("date_dmy", "date_dmy_slash"):
+    if fmt == "currency_4_decimals":
+        try:
+            n = float(str(raw).replace(",", "").replace("RM", "").strip())
+            return f"{n:,.4f}"
+        except (ValueError, TypeError):
+            return s
+
+    if fmt == "currency_no_decimals":
+        try:
+            n = float(str(raw).replace(",", "").replace("RM", "").strip())
+            return f"{n:,.0f}"
+        except (ValueError, TypeError):
+            return s
+
+    if fmt == "date_ddmmyyyy":
         if isinstance(raw, (datetime.datetime, datetime.date)):
             return raw.strftime("%d/%m/%Y")
         for pat in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%d", "%d/%m/%Y", "%d-%m-%Y"):
@@ -75,7 +83,7 @@ def _format_value(raw, fmt: str) -> str:
                 pass
         return s
 
-    if fmt == "date_dmy_long":
+    if fmt == "date_27_May_2026":
         if isinstance(raw, (datetime.datetime, datetime.date)):
             return raw.strftime("%d %b %Y")
         for pat in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%d", "%d/%m/%Y", "%d-%m-%Y"):
@@ -89,18 +97,11 @@ def _format_value(raw, fmt: str) -> str:
         digits = "".join(c for c in str(raw) if c.isdigit()).zfill(12)
         return f"{digits[:6]}-{digits[6:8]}-{digits[8:]}" if len(digits) == 12 else str(raw)
 
-    if fmt == "phone_dashed":
-        digits = "".join(c for c in str(raw) if c.isdigit())
-        return f"{digits[:3]}-{digits[3:]}" if len(digits) >= 10 else str(raw)
-
-    if fmt == "uppercase":
+    if fmt == "all_uppercase":
         return s.upper()
 
-    if fmt == "integer":
-        try:
-            return str(int(float(str(raw).replace(",", ""))))
-        except (ValueError, TypeError):
-            return s
+    if fmt == "1st_letter_case":
+        return s.title()
 
     return s
 
@@ -152,13 +153,24 @@ def _resolve(field: dict, client: dict, settings: dict) -> str:
             or field.get("ExcelColumn")
             or field.get("name", "")
         )
-        raw = client.get(key, field.get("DefaultValue", field.get("value", "")))
+        sheet = field.get("excel_sheet") or field.get("ExcelSheet")
+        sheet_data = client.get("_sheet_data", {})
+        if sheet:
+            raw = (
+                sheet_data.get(sheet, {}).get(key)
+                if isinstance(sheet_data, dict) else None
+            )
+            if raw in ("", None):
+                raw = sheet_data.get(str(sheet).lower(), {}).get(key) if isinstance(sheet_data, dict) else None
+            if raw in ("", None):
+                raw = client.get(key, field.get("DefaultValue", field.get("value", "")))
+        else:
+            raw = client.get(key, field.get("DefaultValue", field.get("value", "")))
 
     if raw == "" or raw is None:
         return ""
 
-    fmt = field.get("format")
-    return _format_value(raw, fmt) if fmt else _to_str(raw)
+    return _format_value(raw, field.get("format", "text"))
 
 
 # ── Overlay builder ───────────────────────────────────────────────────────────
@@ -182,8 +194,27 @@ def _make_overlay(pw: float, ph: float, fields: list[dict],
         except (TypeError, ValueError):
             font_size = 10
         max_width = field.get("max_width") or field.get("MaxWidth")
+        max_chars = field.get("max_chars") or field.get("MaxChars")
+        overflow = str(field.get("overflow") or "shrink_font").lower()
+        if max_chars:
+            try:
+                max_chars = int(max_chars)
+                if len(value) > max_chars:
+                    if overflow == "cut_text":
+                        value = value[:max_chars]
+                    else:
+                        blanks.append(f"{field.get('DisplayLabel') or field.get('name', '?')}: exceeds max chars")
+            except (TypeError, ValueError):
+                pass
         align     = str(field.get("alignment") or field.get("Alignment") or "left").lower()
-        if max_width:
+        if max_width and overflow == "warn":
+            try:
+                max_width_num = float(max_width)
+                if c.stringWidth(value, font, font_size) > max_width_num:
+                    blanks.append(f"{field.get('DisplayLabel') or field.get('name', '?')}: exceeds box width")
+            except (TypeError, ValueError):
+                pass
+        elif max_width:
             try:
                 max_width = float(max_width)
                 while font_size > 6 and c.stringWidth(value, font, font_size) > max_width:

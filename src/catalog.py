@@ -9,6 +9,7 @@ from __future__ import annotations
 import json
 import shutil
 from pathlib import Path
+import re
 
 import config_loader
 
@@ -68,10 +69,9 @@ DEFAULT_PROCEDURE_ITEMS = [
     {"ProcedureCode": "P001", "StepNo": 1, "ItemType": "SourceForm", "SourceFormCode": "SF001", "BlankPageCount": 0, "Remarks": ""},
     {"ProcedureCode": "P002", "StepNo": 1, "ItemType": "SourceForm", "SourceFormCode": "SF002", "BlankPageCount": 0, "Remarks": ""},
     {"ProcedureCode": "P004", "StepNo": 1, "ItemType": "SourceForm", "SourceFormCode": "SF002", "BlankPageCount": 0, "Remarks": "FD form"},
-    {"ProcedureCode": "P004", "StepNo": 2, "ItemType": "BlankPage", "SourceFormCode": "", "BlankPageCount": 1, "Remarks": "Insert blank page"},
-    {"ProcedureCode": "P004", "StepNo": 3, "ItemType": "SourceForm", "SourceFormCode": "SF003", "BlankPageCount": 0, "Remarks": "UT form"},
-    {"ProcedureCode": "P004", "StepNo": 4, "ItemType": "SourceForm", "SourceFormCode": "SF004", "BlankPageCount": 0, "Remarks": "Risk profile"},
-    {"ProcedureCode": "P004", "StepNo": 5, "ItemType": "SourceForm", "SourceFormCode": "SF005", "BlankPageCount": 0, "Remarks": "Indemnity"},
+    {"ProcedureCode": "P004", "StepNo": 2, "ItemType": "SourceForm", "SourceFormCode": "SF003", "BlankPageCount": 0, "Remarks": "UT form"},
+    {"ProcedureCode": "P004", "StepNo": 3, "ItemType": "SourceForm", "SourceFormCode": "SF004", "BlankPageCount": 0, "Remarks": "Risk profile"},
+    {"ProcedureCode": "P004", "StepNo": 4, "ItemType": "SourceForm", "SourceFormCode": "SF005", "BlankPageCount": 0, "Remarks": "Indemnity"},
     {"ProcedureCode": "P008", "StepNo": 1, "ItemType": "SourceForm", "SourceFormCode": "SF004", "BlankPageCount": 0, "Remarks": ""},
     {"ProcedureCode": "P008", "StepNo": 2, "ItemType": "SourceForm", "SourceFormCode": "SF005", "BlankPageCount": 0, "Remarks": ""},
     {"ProcedureCode": "P009", "StepNo": 1, "ItemType": "SourceForm", "SourceFormCode": "SF006", "BlankPageCount": 0, "Remarks": ""},
@@ -191,10 +191,24 @@ def resolve_source_pdf_path(source_form: dict, settings: dict) -> Path:
         return Path()
     path = Path(raw)
     if path.is_absolute():
-        return path
-    base = config_loader.forms_folder_path(settings)
-    return base / path
+        candidate = path
+    else:
+        base = config_loader.forms_folder_path(settings)
+        candidate = base / path
+    if candidate.is_dir():
+        pdfs = sorted(
+            p for p in candidate.iterdir()
+            if p.is_file() and p.suffix.lower() == ".pdf"
+        )
+        if len(pdfs) == 1:
+            return pdfs[0]
+    return candidate
 
 
 def mapping_key(source_form: dict) -> str:
     return str(get_value(source_form, "MappingKey", "") or get_value(source_form, "SourceFormCode", "")).strip()
+
+
+def source_code_from_folder(folder_name: str) -> str:
+    match = re.match(r"^\s*(SF\d{3,}[A-Z]?)\b", folder_name, flags=re.I)
+    return match.group(1).upper() if match else ""

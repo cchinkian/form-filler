@@ -50,6 +50,7 @@ def test_package_engine_generates_ordered_combined_pdf() -> None:
                     "ProcedureCode": "PROC_SMOKE",
                     "DisplayName": "Two Form Smoke",
                     "Active": True,
+                    "AutoBlankAfterOdd": False,
                 }
             ],
         )
@@ -122,6 +123,7 @@ def test_package_engine_generates_ordered_combined_pdf() -> None:
                             "x": 100,
                             "y": 700,
                             "required": True,
+                            "format": "currency_2_decimals",
                         },
                         {
                             "name": "date",
@@ -237,7 +239,7 @@ def test_package_engine_generates_ordered_combined_pdf() -> None:
 
         assert "FIRST_SOURCE_TEMPLATE" in page_texts[0]
         assert "Avery Tan" in page_texts[0]
-        assert "25000" in page_texts[0]
+        assert "25,000.00" in page_texts[0]
         assert "19/05/2026" in page_texts[0]
         assert "CK Staff" in page_texts[0]
         assert "KLG" not in page_texts[0]
@@ -313,10 +315,82 @@ def test_blank_staff_profile_falls_back_to_rm_profile() -> None:
         assert profile["staff_branches"] == ["KJG", "PJY"]
 
 
+def test_workbook_schema_defaults_and_accounts() -> None:
+    with tempfile.TemporaryDirectory() as td:
+        workbook_path = Path(td) / "clients.xlsx"
+        wb = Workbook()
+        clients = wb.active
+        clients.title = "default_clients"
+        clients.append(["*cis", "*name", "*ic_number", "phone"])
+        clients.append(["CIS001", "Avery Tan", "900101101234", "012"])
+        accounts = wb.create_sheet("default_accounts")
+        accounts.append([
+            "common_name", "account_type", "account_number",
+            "holder_1_name", "holder_1_cis", "holder_1_ic",
+            "holder_2_name", "holder_2_cis", "holder_2_ic",
+        ])
+        accounts.append([
+            "Avery UT Wife", "UT", "UT123",
+            "Avery Tan", "CIS001", "900101101234",
+            "Mary Lee", "CIS002", "850202105678",
+        ])
+        staff = wb.create_sheet("default_staff")
+        staff.append(["staff_name", "staff_rm_codes"])
+        staff.append(["CK Staff", "RM001"])
+        wb.save(workbook_path)
+
+        schema = excel_reader.workbook_schema(workbook_path)
+        default_clients = next(s for s in schema if s["sheet"] == "default_clients")
+        defaults = {f["field"] for f in default_clients["fields"] if f["default"]}
+        assert defaults == {"cis", "name", "ic_number"}
+
+        records = excel_reader.load_customer_records(workbook_path)
+        accounts = excel_reader.load_accounts(workbook_path)
+        rows = excel_reader.accounts_for_customer(accounts, records[0], "UT")
+        assert len(rows) == 1
+        assert rows[0]["common_name"] == "Avery UT Wife"
+        assert "Avery UT Wife" in rows[0]["_label"]
+
+
+def test_auto_blank_after_odd_pages() -> None:
+    with tempfile.TemporaryDirectory() as td:
+        root = Path(td)
+        forms_root = root / "forms"
+        output_root = root / "output"
+        one = forms_root / "one.pdf"
+        two = forms_root / "two.pdf"
+        _make_pdf(one, "ONE_PAGE")
+        _make_pdf(two, "TWO_PAGE")
+
+        result = package_engine.generate_package(
+            procedure={"ProcedureCode": "PROC_AUTO_BLANK", "DisplayName": "Auto Blank", "Active": True, "AutoBlankAfterOdd": True},
+            source_forms={
+                "SF_ONE": {"SourceFormCode": "SF_ONE", "PDFFilePath": "one.pdf", "MappingKey": "one", "Active": True},
+                "SF_TWO": {"SourceFormCode": "SF_TWO", "PDFFilePath": "two.pdf", "MappingKey": "two", "Active": True},
+            },
+            procedure_items=[
+                {"ProcedureCode": "PROC_AUTO_BLANK", "StepNo": 1, "ItemType": "SourceForm", "SourceFormCode": "SF_ONE"},
+                {"ProcedureCode": "PROC_AUTO_BLANK", "StepNo": 2, "ItemType": "SourceForm", "SourceFormCode": "SF_TWO"},
+            ],
+            forms_config={"one": {"fields": []}, "two": {"fields": []}},
+            client={"name": "Avery Tan"},
+            settings={"forms_folder": str(forms_root), "default_font_size": 10},
+            output_root=output_root,
+            session={"date": "19/05/2026"},
+        )
+
+        reader = pypdf.PdfReader(str(result["output_path"]))
+        assert len(reader.pages) == 4
+        assert (reader.pages[1].extract_text() or "").strip() == ""
+        assert (reader.pages[3].extract_text() or "").strip() == ""
+
+
 def main() -> None:
     test_package_engine_generates_ordered_combined_pdf()
     test_load_staff_profile_from_excel_table()
     test_blank_staff_profile_falls_back_to_rm_profile()
+    test_workbook_schema_defaults_and_accounts()
+    test_auto_blank_after_odd_pages()
     print("OK: procedure package smoke")
 
 

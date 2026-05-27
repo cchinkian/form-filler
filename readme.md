@@ -37,7 +37,7 @@ Output/             Generated PDFs, created on launch
 
 - `Generate Package`: search one customer, choose a procedure, fill missing fields, generate one combined PDF.
 - `Bulk Export`: paste/import CIS list, review matched/not found/duplicate rows, generate the same procedure for matched customers.
-- `Procedure Builder`: edit procedure names and package order, add/remove/reorder source forms, insert blank pages.
+- `Procedure Builder`: edit procedure names and package order, search available source forms, add/remove/reorder forms, and enable automatic blank pages after odd-page PDFs.
 - `Source Forms`: maintain SourceFormCode, display name, version, PDF path, mapping key, active flag, and expiry remarks.
 - `History / Settings`: open local workbook/config/history/output files and configure paths.
 
@@ -46,7 +46,7 @@ Output/             Generated PDFs, created on launch
 ```text
 config/procedures.json       P001-P016 procedure master list
 config/source_forms.json     SF001+ source form master list
-config/procedure_items.json  Procedure composition/order/blank pages
+config/procedure_items.json  Procedure source-form composition/order
 config/forms.json            Coordinate mappings saved by CoordPicker
 config/settings.json         Local path settings, copied from settings.example.json
 data/clients.xlsx            User customer workbook, created from clients_template.xlsx
@@ -67,16 +67,21 @@ The app reads saved/calculated values from `.xlsx` or `.xlsm` workbooks. Formula
 
 The shipped template contains:
 
-- `Basic Information`
-- `Investor Information`
-- `ProcedureSpecificData`
-- `InsuranceData`
-- `Staff_Profile`
-- `Bulk_CIS_Template`
+- `default_clients`
+- `default_accounts`
+- `default_investment`
+- `default_insurance`
+- `default_staff`
+- `bulk_cis_template`
+- `history_log`
 
 Search supports customer name, CIS, IC, and policy number. Bulk matching uses CIS only.
 
-`Staff_Profile` holds default staff/RM information used across forms:
+Column headers starting with `*` are treated as default/locked fields in the app, for example `*cis`, `*name`, `*ic_number`.
+
+`default_accounts` holds selectable UT/BOND/SI accounts. Use `common_name` as the human-friendly selector and keep holder CIS/IC values in `holder_1_*`, `holder_2_*`, and `holder_3_*` columns.
+
+`default_staff` holds default staff/RM information used across forms:
 staff name, staff IC, staff ID, FIMM ID, IPPC ID, position, RM code options, and branch options.
 Leader/approval details are not maintained in the app; approval columns can be signed by hand.
 

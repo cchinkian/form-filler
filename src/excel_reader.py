@@ -9,6 +9,8 @@ Fix-8: IC numbers normalized both sides of join.
 Fix-9: Native Python types preserved through reader.
 """
 import re
+import shutil
+import datetime
 import openpyxl
 from pathlib import Path
 
@@ -92,6 +94,12 @@ _KEY_HEADERS = {
     "name", "client_name", "customer_name",
     "ic", "ic_number", "nric", "new_ic",
     "policy", "policy_no", "policy_number",
+    "common_name", "account_number",
+    "holder_1_cis", "holder_2_cis", "holder_3_cis",
+    "holder_1_ic", "holder_2_ic", "holder_3_ic",
+    "holder_1_name", "holder_2_name", "holder_3_name",
+    "staff_name", "staff_ic", "staff_id", "fimm_id", "ippc_id",
+    "staff_position", "staff_rm_codes", "staff_branches",
 }
 
 _CIS_ALIASES = ("cis", "cis_no", "cis_number", "cif_no", "cif_number")
@@ -102,8 +110,14 @@ _POLICY_ALIASES = ("policy_number", "policy_no", "policy")
 
 def normalize_header(raw) -> str:
     text = str(raw or "").strip().lower()
+    if text.startswith("*"):
+        text = text[1:].strip()
     text = re.sub(r"[^a-z0-9]+", "_", text)
     return text.strip("_")
+
+
+def is_default_header(raw) -> bool:
+    return str(raw or "").strip().startswith("*")
 
 
 def normalize_lookup_key(raw) -> str:
@@ -153,9 +167,10 @@ def _sheet_records_generic(ws) -> list[dict]:
     header_row = _detect_header_row(ws)
     if not header_row:
         return []
+    raw_headers = next(ws.iter_rows(min_row=header_row, max_row=header_row, values_only=True))
     headers = [
         normalize_header(v) if v not in (None, "") else f"col_{i}"
-        for i, v in enumerate(next(ws.iter_rows(min_row=header_row, max_row=header_row, values_only=True)))
+        for i, v in enumerate(raw_headers)
     ]
     rows = []
     for row in ws.iter_rows(min_row=header_row + 1, values_only=True):
@@ -184,7 +199,12 @@ def load_customer_records(path: Path) -> list[dict]:
         return []
     wb = _open_wb(path)
     merged: dict[str, dict] = {}
-    non_customer_sheets = {"rm_profile", "staff_profile", "leader_profile", "leaders"}
+    non_customer_sheets = {
+        "rm_profile", "staff_profile", "default_staff",
+        "leader_profile", "leaders",
+        "bulk_cis_template", "history_log", "history",
+        "default_accounts",
+    }
     for sheet_name in wb.sheetnames:
         if sheet_name.lower() in non_customer_sheets:
             continue
@@ -200,12 +220,147 @@ def load_customer_records(path: Path) -> list[dict]:
             if not key:
                 key = f"{sheet_name}:{len(merged) + 1}"
             existing = merged.setdefault(key, {})
+            sheet_bucket = existing.setdefault("_sheet_data", {})
+            sheet_bucket[sheet_name] = {k: v for k, v in rec.items() if v not in ("", None)}
+            sheet_bucket[normalize_header(sheet_name)] = sheet_bucket[sheet_name]
             existing.update({k: v for k, v in rec.items() if v not in ("", None)})
             sheets = set(str(existing.get("_sheets", "")).split("|")) if existing.get("_sheets") else set()
             sheets.add(sheet_name)
             existing["_sheets"] = "|".join(sorted(sheets))
     wb.close()
     return sorted(merged.values(), key=lambda r: str(r.get("name") or r.get("cis") or ""))
+
+
+def workbook_schema(path: Path) -> list[dict]:
+    """
+    Return sheet/field metadata for Mapping Editor dropdowns.
+
+    A header starting with '*' is treated as a default/locked field marker.
+    The returned field name removes the marker, so '*ic_number' becomes
+    field='ic_number', default=True.
+    """
+    if not path.exists():
+        return []
+    wb = _open_wb(path)
+    schema = []
+    for sheet_name in wb.sheetnames:
+        ws = wb[sheet_name]
+        header_row = _detect_header_row(ws)
+        if not header_row:
+            continue
+        raw_headers = next(ws.iter_rows(min_row=header_row, max_row=header_row, values_only=True))
+        fields = []
+        seen = set()
+        for raw in raw_headers:
+            if raw in (None, ""):
+                continue
+            name = normalize_header(raw)
+            if not name or name in seen:
+                continue
+            seen.add(name)
+            fields.append({
+                "field": name,
+                "display": str(raw).strip().lstrip("*").strip(),
+                "default": is_default_header(raw),
+            })
+        if fields:
+            schema.append({
+                "sheet": sheet_name,
+                "sheet_key": normalize_header(sheet_name),
+                "fields": fields,
+            })
+    wb.close()
+    return schema
+
+
+def sheet_field_defaults(path: Path) -> dict[str, set[str]]:
+    defaults: dict[str, set[str]] = {}
+    for sheet in workbook_schema(path):
+        fields = {f["field"] for f in sheet["fields"] if f.get("default")}
+        if fields:
+            defaults[sheet["sheet"]] = fields
+            defaults[sheet["sheet_key"]] = fields
+    return defaults
+
+
+def _account_label(row: dict) -> str:
+    common = row.get("common_name") or "Account"
+    typ = row.get("account_type") or "-"
+    num = row.get("account_number") or "-"
+    holders = []
+    for idx in range(1, 4):
+        name = row.get(f"holder_{idx}_name")
+        if name:
+            holders.append(str(name))
+    holder_text = " / ".join(holders)
+    return f"{common} | {typ} | {num}" + (f" | {holder_text}" if holder_text else "")
+
+
+def load_accounts(path: Path) -> list[dict]:
+    """Load default_accounts rows. One row represents one selectable account."""
+    if not path.exists():
+        return []
+    wb = _open_wb(path)
+    sheet_name = None
+    for candidate in ("default_accounts", "Default Accounts", "Accounts"):
+        if candidate in wb.sheetnames:
+            sheet_name = candidate
+            break
+    if not sheet_name:
+        wb.close()
+        return []
+    rows = _sheet_records_generic(wb[sheet_name])
+    wb.close()
+    accounts = []
+    for row in rows:
+        if not (row.get("common_name") or row.get("account_number")):
+            continue
+        row["_source_sheet"] = sheet_name
+        row["_label"] = _account_label(row)
+        accounts.append(row)
+    return accounts
+
+
+def _account_search_values(account: dict) -> list[str]:
+    values = [
+        account.get("common_name", ""),
+        account.get("account_type", ""),
+        account.get("account_number", ""),
+    ]
+    for idx in range(1, 4):
+        values.extend([
+            account.get(f"holder_{idx}_name", ""),
+            account.get(f"holder_{idx}_cis", ""),
+            account.get(f"holder_{idx}_ic", ""),
+        ])
+    return [str(v) for v in values if v not in ("", None)]
+
+
+def account_matches_customer(account: dict, customer: dict) -> bool:
+    def compact_ic(raw) -> str:
+        return re.sub(r"[^0-9]", "", str(raw or ""))
+
+    customer_keys = {
+        normalize_lookup_key(customer.get("cis", "")),
+        normalize_lookup_key(customer.get("cif_no", "")),
+        normalize_lookup_key(customer.get("name", "")),
+        normalize_lookup_key(customer.get("client_name", "")),
+    }
+    customer_ics = {compact_ic(customer.get("ic_number", ""))}
+    customer_keys.discard("")
+    customer_ics.discard("")
+    for value in _account_search_values(account):
+        if normalize_lookup_key(value) in customer_keys or compact_ic(value) in customer_ics:
+            return True
+    return False
+
+
+def accounts_for_customer(accounts: list[dict], customer: dict, account_type: str | None = None) -> list[dict]:
+    rows = [a for a in accounts if account_matches_customer(a, customer)]
+    if account_type:
+        target = normalize_lookup_key(account_type)
+        rows = [a for a in rows if normalize_lookup_key(a.get("account_type", "")) == target]
+    return rows
 
 
 def search_customers(records: list[dict], query: str, limit: int = 80) -> list[dict]:
@@ -333,6 +488,7 @@ def _load_profile_sheet(wb, sheet_name: str) -> dict:
                     values[header] = _profile_value(row[idx] if idx < len(row) else "")
             if any(values.values()):
                 return values
+        return {}
 
     values = {
         key: value
@@ -344,9 +500,9 @@ def _load_profile_sheet(wb, sheet_name: str) -> dict:
 
 def load_staff_profile(path: Path) -> dict:
     """
-    Load default staff information from Staff_Profile.
+    Load default staff information from default_staff / Staff_Profile.
 
-    Backward-compatible: if Staff_Profile is absent, the older RM_Profile sheet
+    Backward-compatible: if default_staff / Staff_Profile is absent, RM_Profile
     is accepted. Returned aliases make mappings forgiving:
     staff_name/rm_name, staff_id/rm_staff_id, staff_rm_codes/rm_codes, etc.
     """
@@ -359,7 +515,9 @@ def load_staff_profile(path: Path) -> dict:
         return profile
 
     wb = _open_wb(path)
-    raw = _load_profile_sheet(wb, "Staff_Profile")
+    raw = _load_profile_sheet(wb, "default_staff")
+    if not raw:
+        raw = _load_profile_sheet(wb, "Staff_Profile")
     if not raw:
         raw = _load_profile_sheet(wb, "RM_Profile")
     wb.close()
