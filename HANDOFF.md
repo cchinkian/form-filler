@@ -9,17 +9,18 @@ Core flow:
 The app is local-only and offline. Do not add cloud sync, login, API validation, CRM, manager approval, OCR, email/WhatsApp sending, SQLite/server database, or online form update features for Version 1.
 
 ### Latest Release
-- Release tag: `procedure-automation-workflow-update-2026-05-27`
-- Release page: https://github.com/cchinkian/form-filler/releases/tag/procedure-automation-workflow-update-2026-05-27
+- Release tag: `procedure-automation-source-history-update-2026-05-27`
+- Release page: https://github.com/cchinkian/form-filler/releases/tag/procedure-automation-source-history-update-2026-05-27
 - Latest app ZIP: https://github.com/cchinkian/form-filler/releases/latest/download/FormFiller-portable.zip
 - Latest synthetic test work folder ZIP: https://github.com/cchinkian/form-filler/releases/latest/download/FormFiller_Test_WorkFolder_20260527.zip
-- GitHub Windows build: `26516755329`
+- GitHub Windows build: `26522180335`
 - Latest release assets:
   - `FormFiller-portable.zip` — contains `FormFiller.exe`, `CoordPicker.exe`, `config/`, `data/`
   - `FormFiller_Test_WorkFolder_20260527.zip` — refreshed sample work folder with 57 synthetic form folders
 - `GreenTest.exe` is no longer required and is not included in the latest portable ZIP.
 
 ### Latest Commits
+- `f15527f` — `Improve source form workflow and history restore`
 - `d0a65b6` — `Improve mapping and procedure workflows`
 - `a6417c6` — `Fix review findings for workflow update`
 
@@ -28,14 +29,14 @@ The app is local-only and offline. Do not add cloud sync, login, API validation,
 - `python3 tests/procedure_package_smoke.py`
 - `python3 tests/sales_flow_smoke.py`
 - `git diff --check`
-- GitHub Actions Windows build passed for run `26516755329`.
+- GitHub Actions Windows build passed for run `26522180335`.
 - Downloaded and inspected `FormFiller-portable.zip`:
   - `FormFiller.exe` present.
   - `CoordPicker.exe` present.
   - `GreenTest.exe` absent.
   - `config/settings.json` and `data/clients_template.xlsx` present.
 
-### Current Local Changes Not Yet Released
+### Latest Release Changes
 - Source Forms now has a `Category` dropdown populated from existing procedure/source-form categories.
 - Generate tab now has `Edit Category`; renaming a category updates matching procedures and source forms.
 - Source Forms PDF path UI now has separate `Browse PDF` and `Browse Folder` buttons.
