@@ -8,6 +8,7 @@ Output: PDF-space coordinates (bottom-left origin).
   y=0 = bottom of page.  A4 top = y≈842.
   Use these values in forms.json field definitions.
 """
+import argparse
 import sys
 import tkinter as tk
 from tkinter import ttk, filedialog, messagebox
@@ -27,10 +28,11 @@ except ImportError:
 
 ZOOM = 1.5  # display scale factor (1.5 = 150% of actual PDF size)
 
-SOURCE_TYPES  = ["data", "settings", "fixed", "auto"]
+SOURCE_TYPES  = ["data", "session", "rm_profile", "fixed", "auto", "settings"]
 FORMAT_OPTS   = ["", "ic_dashed", "currency_myr", "currency_no_symbol",
                  "date_dmy", "date_dmy_long", "phone_dashed",
                  "uppercase", "integer"]
+ALIGN_OPTS    = ["left", "center", "right"]
 AUTO_TYPES    = ["date", "year", "month"]
 
 
@@ -59,14 +61,18 @@ class CoordPickerApp(tk.Tk):
         self._click_x    = tk.DoubleVar(value=0.0)
         self._click_y    = tk.DoubleVar(value=0.0)
         self._fname      = tk.StringVar()
+        self._display    = tk.StringVar()
         self._source     = tk.StringVar(value="data")
         self._fmt        = tk.StringVar()
         self._auto_type  = tk.StringVar(value="date")
         self._fixed_val  = tk.StringVar()
         self._font_size  = tk.IntVar(value=10)
+        self._align      = tk.StringVar(value="left")
+        self._max_width  = tk.StringVar()
         self._required   = tk.BooleanVar(value=False)
 
         self._build_ui()
+        self._apply_startup_args()
 
         if not HAS_DEPS:
             messagebox.showerror(
@@ -93,7 +99,7 @@ class CoordPickerApp(tk.Tk):
 
         # ── Form identity ──
         section(left, "1. Form identity")
-        lbl_entry(left, "Form ID (no spaces):", self._form_id)
+        lbl_entry(left, "MappingKey / SourceFormCode:", self._form_id)
         lbl_entry(left, "Display name:", self._form_name_var)
 
         tk.Label(left, text="Template subfolder:", bg="#f0f0f0",
@@ -139,7 +145,8 @@ class CoordPickerApp(tk.Tk):
 
         # ── Field details ──
         section(left, "3. Field details")
-        lbl_entry(left, "Field name (Excel column):", self._fname)
+        lbl_entry(left, "Field ID / Excel field:", self._fname)
+        lbl_entry(left, "Display label:", self._display)
 
         tk.Label(left, text="Source:", bg="#f0f0f0", anchor="w").pack(fill=tk.X)
         src_cb = ttk.Combobox(left, textvariable=self._source,
@@ -172,6 +179,15 @@ class CoordPickerApp(tk.Tk):
                    width=4).pack(side=tk.LEFT, padx=4)
         tk.Checkbutton(bot_row, text="Required", variable=self._required,
                        bg="#f0f0f0").pack(side=tk.LEFT)
+
+        adv_row = tk.Frame(left, bg="#f0f0f0")
+        adv_row.pack(fill=tk.X, pady=(0, 4))
+        tk.Label(adv_row, text="Align:", bg="#f0f0f0").pack(side=tk.LEFT)
+        ttk.Combobox(adv_row, textvariable=self._align, values=ALIGN_OPTS,
+                     state="readonly", width=7).pack(side=tk.LEFT, padx=4)
+        tk.Label(adv_row, text="Max width:", bg="#f0f0f0").pack(side=tk.LEFT)
+        tk.Entry(adv_row, textvariable=self._max_width,
+                 width=6).pack(side=tk.LEFT, padx=4)
 
         btn_row = tk.Frame(left, bg="#f0f0f0")
         btn_row.pack(fill=tk.X, pady=4)
@@ -270,15 +286,38 @@ class CoordPickerApp(tk.Tk):
         )
         if not path:
             return
-        self._doc = fitz.open(path)
+        self._load_pdf_path(Path(path))
+
+    def _load_pdf_path(self, path: Path):
+        if not HAS_DEPS:
+            return
+        self._doc = fitz.open(str(path))
+        self._pdf_path = Path(path)
         self._page_count = len(self._doc)
         self._page_num = 1
-        p = Path(path)
         if not self._subfolder.get():
-            self._subfolder.set(p.parent.name)
+            self._subfolder.set(path.parent.name)
         if not self._form_id.get():
-            self._form_id.set(p.parent.name.lower().replace(" ", "_"))
+            self._form_id.set(path.parent.name.lower().replace(" ", "_"))
         self._render()
+
+    def _apply_startup_args(self):
+        parser = argparse.ArgumentParser(add_help=False)
+        parser.add_argument("--form-id")
+        parser.add_argument("--display-name")
+        parser.add_argument("--subfolder")
+        parser.add_argument("--pdf")
+        args, _ = parser.parse_known_args()
+        if args.form_id:
+            self._form_id.set(args.form_id)
+        if args.display_name:
+            self._form_name_var.set(args.display_name)
+        if args.subfolder:
+            self._subfolder.set(args.subfolder)
+        if args.pdf:
+            pdf_path = Path(args.pdf)
+            if pdf_path.exists():
+                self._load_pdf_path(pdf_path)
 
     def _render(self):
         if not self._doc:
@@ -358,6 +397,16 @@ class CoordPickerApp(tk.Tk):
             "source":    self._source.get(),
             "font_size": self._font_size.get(),
         }
+        if self._display.get().strip():
+            field["DisplayLabel"] = self._display.get().strip()
+        if self._align.get() != "left":
+            field["alignment"] = self._align.get()
+        if self._max_width.get().strip():
+            try:
+                field["max_width"] = float(self._max_width.get().strip())
+            except ValueError:
+                messagebox.showwarning("Bad max width", "Max width must be a number.")
+                return
         if self._fmt.get():
             field["format"] = self._fmt.get()
         if self._required.get():
@@ -370,9 +419,10 @@ class CoordPickerApp(tk.Tk):
         self._fields.append(field)
         self._dot(self._click_x.get() * ZOOM,
                   (self._page_h - self._click_y.get()) * ZOOM,
-                  name)
+                  field.get("DisplayLabel") or name)
         self._refresh_list()
         self._fname.set("")
+        self._display.set("")
         self._status(f"Added '{name}'  (total: {len(self._fields)} fields)")
 
     def _undo_last(self):

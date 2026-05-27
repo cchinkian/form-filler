@@ -1,24 +1,32 @@
 # Tech Stack
-_Auto-generated: 2026-05-18 16:00 MYT_
+_Updated: 2026-05-27_
 
-## Database
-- `data/client_db.db`
-- SQLite usage: `src/client_db.py`
+## Runtime
+- Offline Windows desktop app
+- Python standard library + `tkinter` / `ttk`
+- Portable PyInstaller EXE, no admin permission expected
+
+## Data
+- Customer workbook: `.xlsx` / `.xlsm` read through `openpyxl`
+- Procedure master: `config/procedures.json`
+- Source form master: `config/source_forms.json`
+- Procedure composition: `config/procedure_items.json`
+- Mapping store: `config/forms.json`
+- History log: `data/HistoryLog.xlsx`
 
 ## PDF
-- Fill engine: `src/pdf_engine.py`
-- PDF library: `pypdf`
-- Overlay text: `reportlab`
-- Coordinate mapping: `src/coord_picker.py` / `CoordPicker.exe`
-- Mapping preview dependencies: `PyMuPDF`, `Pillow` (kept out of main FormFiller runtime)
-
-## UI
-- Desktop GUI: `tkinter` / `ttk`
-- Date picker: `tkcalendar` + `babel`
+- Overlay engine: `src/pdf_engine.py`
+- Package engine: `src/package_engine.py`
+- PDF merge/blank pages: `pypdf`
+- Text overlay: `reportlab`
+- Mapping editor: `src/coord_picker.py`
+- Mapping preview dependencies: `PyMuPDF`, `Pillow`
 
 ## Build
-- Windows exe build: GitHub Actions on `windows-latest`
+- Windows build: GitHub Actions on `windows-latest`
 - Bundler: `pyinstaller`
+- Release artifact: `FormFiller-portable.zip`
 
 ## Tests
-- Core smoke test: `tests/sales_flow_smoke.py`
+- Legacy overlay smoke: `tests/sales_flow_smoke.py`
+- Procedure package smoke: `tests/procedure_package_smoke.py`

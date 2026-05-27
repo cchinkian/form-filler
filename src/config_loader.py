@@ -46,7 +46,15 @@ def forms_folder_path(settings: dict) -> Path:
 
 
 def output_folder_path(settings: dict) -> Path:
-    return resolve_path(settings.get("output_folder", "filled"))
+    return resolve_path(settings.get("output_folder", "Output"))
+
+
+def customer_workbook_path(settings: dict) -> Path:
+    return resolve_path(settings.get("customer_workbook", "data/clients.xlsx"))
+
+
+def history_log_path(settings: dict) -> Path:
+    return resolve_path(settings.get("history_log_path", "data/HistoryLog.xlsx"))
 
 
 # ── Settings ──────────────────────────────────────────────────────────────────
@@ -91,7 +99,12 @@ def backup_settings_on_launch():
 def ensure_runtime_dirs(settings: dict) -> dict:
     """Create forms_folder + output_folder if missing.
     Returns dict with keys: forms_created, output_created, forms_empty."""
-    info = {"forms_created": False, "output_created": False, "forms_empty": False}
+    info = {
+        "forms_created": False,
+        "output_created": False,
+        "forms_empty": False,
+        "data_created": False,
+    }
 
     ff = forms_folder_path(settings)
     if not ff.exists():
@@ -105,14 +118,23 @@ def ensure_runtime_dirs(settings: dict) -> dict:
         of.mkdir(parents=True, exist_ok=True)
         info["output_created"] = True
 
+    data_dir = customer_workbook_path(settings).parent
+    if not data_dir.exists():
+        data_dir.mkdir(parents=True, exist_ok=True)
+        info["data_created"] = True
+
     return info
 
 
 def ensure_clients_xlsx() -> dict:
-    """If data/clients.xlsx missing, copy data/clients_template.xlsx to it.
+    """If customer workbook missing, copy data/clients_template.xlsx to it.
     Returns dict with keys: copied, source_missing."""
     info = {"copied": False, "source_missing": False}
-    target = data_path("clients.xlsx")
+    try:
+        settings = load_settings()
+        target = customer_workbook_path(settings)
+    except Exception:
+        target = data_path("clients.xlsx")
     if target.exists():
         return info
     template = data_path("clients_template.xlsx")
@@ -140,13 +162,6 @@ def save_forms(data: dict):
         shutil.copy(forms_path, bak_path)
     with open(forms_path, "w", encoding="utf-8") as f:
         json.dump(data, f, indent=2, ensure_ascii=False)
-
-
-# ── Applications ──────────────────────────────────────────────────────────────
-
-def load_applications() -> list:
-    with open(_config_path("applications.json"), encoding="utf-8") as f:
-        return json.load(f)
 
 
 # ── Template PDF ──────────────────────────────────────────────────────────────
@@ -280,10 +295,6 @@ def health_check(settings: dict, forms: dict) -> list[dict]:
 
 def data_path(filename: str) -> Path:
     return _base_dir() / "data" / filename
-
-
-def log_path() -> Path:
-    return _base_dir() / "data" / "fill_log.csv"
 
 
 def state_path() -> Path:

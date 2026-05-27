@@ -3,6 +3,7 @@ __pycache__/
 *.exe
 dist/
 build/
+build_artifacts/
 *.spec
 venv/
 zzz_*
@@ -12,15 +13,20 @@ data/clients.xlsx
 data/client_db.db
 data/client_db.db-journal
 data/fill_log.csv
+data/HistoryLog.xlsx
 data/state.json
 config/settings.json
 config/settings.json.old
 config/backups/
 config/forms.json.bak
+config/procedures.json.bak
+config/source_forms.json.bak
+config/procedure_items.json.bak
 
 # Pen-drive runtime folders (created on launch, never source-controlled)
 forms/
 filled/
+Output/
 
 # Template files are committed (safe — no real data)
 !data/clients_template.xlsx

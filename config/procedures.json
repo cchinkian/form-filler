@@ -1,0 +1,162 @@
+[
+  {
+    "ProcedureCode": "P001",
+    "Category": "Customer Maintenance",
+    "DisplayName": "Customer Maintenance",
+    "Version": "V01",
+    "Active": true,
+    "Description": "",
+    "DefaultOutputName": "ClientName_Date_CustomerMaintenance",
+    "Remarks": ""
+  },
+  {
+    "ProcedureCode": "P002",
+    "Category": "FD / Special Product Bundle",
+    "DisplayName": "FD Related",
+    "Version": "V01",
+    "Active": true,
+    "Description": "",
+    "DefaultOutputName": "ClientName_Date_FDRelated",
+    "Remarks": ""
+  },
+  {
+    "ProcedureCode": "P003",
+    "Category": "FD / Special Product Bundle",
+    "DisplayName": "FD Bundle + Bond",
+    "Version": "V01",
+    "Active": true,
+    "Description": "",
+    "DefaultOutputName": "ClientName_Date_FDBundleBond",
+    "Remarks": ""
+  },
+  {
+    "ProcedureCode": "P004",
+    "Category": "FD / Special Product Bundle",
+    "DisplayName": "FD Bundle + UT",
+    "Version": "V01",
+    "Active": true,
+    "Description": "FD bundled with UT investment",
+    "DefaultOutputName": "ClientName_Date_FDBundleUT",
+    "Remarks": ""
+  },
+  {
+    "ProcedureCode": "P005",
+    "Category": "FD / Special Product Bundle",
+    "DisplayName": "FD Bundle + SI",
+    "Version": "V01",
+    "Active": true,
+    "Description": "",
+    "DefaultOutputName": "ClientName_Date_FDBundleSI",
+    "Remarks": ""
+  },
+  {
+    "ProcedureCode": "P006",
+    "Category": "FD / Special Product Bundle",
+    "DisplayName": "FD Bundle + Banca",
+    "Version": "V01",
+    "Active": true,
+    "Description": "",
+    "DefaultOutputName": "ClientName_Date_FDBundleBanca",
+    "Remarks": ""
+  },
+  {
+    "ProcedureCode": "P007",
+    "Category": "FD / Special Product Bundle",
+    "DisplayName": "FD Bundle + ASNB",
+    "Version": "V01",
+    "Active": true,
+    "Description": "",
+    "DefaultOutputName": "ClientName_Date_FDBundleASNB",
+    "Remarks": ""
+  },
+  {
+    "ProcedureCode": "P008",
+    "Category": "Investment / Account Opening",
+    "DisplayName": "Risk Profile + Indemnity",
+    "Version": "V01",
+    "Active": true,
+    "Description": "",
+    "DefaultOutputName": "ClientName_Date_RiskProfileIndemnity",
+    "Remarks": ""
+  },
+  {
+    "ProcedureCode": "P009",
+    "Category": "Investment / Account Opening",
+    "DisplayName": "Account Opening - Bond / SI / UT",
+    "Version": "V01",
+    "Active": true,
+    "Description": "",
+    "DefaultOutputName": "ClientName_Date_AccountOpening",
+    "Remarks": ""
+  },
+  {
+    "ProcedureCode": "P010",
+    "Category": "Investment / Account Opening",
+    "DisplayName": "UT Investment",
+    "Version": "V01",
+    "Active": true,
+    "Description": "",
+    "DefaultOutputName": "ClientName_Date_UTInvestment",
+    "Remarks": ""
+  },
+  {
+    "ProcedureCode": "P011",
+    "Category": "Investment / Account Opening",
+    "DisplayName": "SI Investment",
+    "Version": "V01",
+    "Active": true,
+    "Description": "",
+    "DefaultOutputName": "ClientName_Date_SIInvestment",
+    "Remarks": ""
+  },
+  {
+    "ProcedureCode": "P012",
+    "Category": "Investment / Account Opening",
+    "DisplayName": "Bond Investment",
+    "Version": "V01",
+    "Active": true,
+    "Description": "",
+    "DefaultOutputName": "ClientName_Date_BondInvestment",
+    "Remarks": ""
+  },
+  {
+    "ProcedureCode": "P013",
+    "Category": "Insurance",
+    "DisplayName": "Tokio Marine Subscription",
+    "Version": "V01",
+    "Active": true,
+    "Description": "",
+    "DefaultOutputName": "ClientName_Date_TokioMarineSubscription",
+    "Remarks": ""
+  },
+  {
+    "ProcedureCode": "P014",
+    "Category": "Insurance",
+    "DisplayName": "Takaful Subscription",
+    "Version": "V01",
+    "Active": true,
+    "Description": "",
+    "DefaultOutputName": "ClientName_Date_TakafulSubscription",
+    "Remarks": ""
+  },
+  {
+    "ProcedureCode": "P015",
+    "Category": "Insurance",
+    "DisplayName": "Tokio Marine Fund Switching",
+    "Version": "V01",
+    "Active": true,
+    "Description": "",
+    "DefaultOutputName": "ClientName_Date_TokioMarineFundSwitching",
+    "Remarks": ""
+  },
+  {
+    "ProcedureCode": "P016",
+    "Category": "Insurance",
+    "DisplayName": "Takaful Fund Switching",
+    "Version": "V01",
+    "Active": true,
+    "Description": "",
+    "DefaultOutputName": "ClientName_Date_TakafulFundSwitching",
+    "Remarks": ""
+  }
+]

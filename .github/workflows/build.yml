@@ -24,24 +24,24 @@ jobs:
       - name: Build CoordPicker.exe
         run: pyinstaller --onefile --windowed --name CoordPicker src/coord_picker.py
 
-      - name: Build GreenTest.exe
-        run: pyinstaller --onefile --windowed --name GreenTest green_test.py
-
       - name: Stage portable bundle
         shell: cmd
         run: |
           mkdir bundle
           copy dist\FormFiller.exe bundle\
           copy dist\CoordPicker.exe bundle\
-          copy dist\GreenTest.exe bundle\
           xcopy /E /I config bundle\config
           xcopy /E /I data bundle\data
           if exist bundle\config\settings.json del bundle\config\settings.json
           copy bundle\config\settings.example.json bundle\config\settings.json
           if exist bundle\data\clients.xlsx del bundle\data\clients.xlsx
 
+      - name: Create portable zip
+        shell: powershell
+        run: Compress-Archive -Path bundle\* -DestinationPath FormFiller-portable.zip -Force
+
       - name: Upload bundle
         uses: actions/upload-artifact@v4
         with:
           name: FormFiller-portable
-          path: bundle/
+          path: FormFiller-portable.zip

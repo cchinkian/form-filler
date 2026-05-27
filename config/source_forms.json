@@ -1,0 +1,16 @@
+[
+  {"SourceFormCode": "SF001", "Category": "Customer Maintenance", "DisplayName": "Customer Maintenance Form", "Version": "V01", "PDFFilePath": "", "MappingKey": "SF001", "Active": false, "EffectiveDate": "", "ExpiryDate": "", "Remarks": ""},
+  {"SourceFormCode": "SF002", "Category": "FD", "DisplayName": "FD Instruction Form", "Version": "V01", "PDFFilePath": "", "MappingKey": "SF002", "Active": false, "EffectiveDate": "", "ExpiryDate": "", "Remarks": ""},
+  {"SourceFormCode": "SF003", "Category": "UT", "DisplayName": "UT Investment Form", "Version": "V01", "PDFFilePath": "", "MappingKey": "SF003", "Active": false, "EffectiveDate": "", "ExpiryDate": "", "Remarks": ""},
+  {"SourceFormCode": "SF004", "Category": "Investment", "DisplayName": "Risk Profile Form", "Version": "V01", "PDFFilePath": "", "MappingKey": "SF004", "Active": false, "EffectiveDate": "", "ExpiryDate": "", "Remarks": ""},
+  {"SourceFormCode": "SF005", "Category": "Investment", "DisplayName": "Indemnity Form", "Version": "V01", "PDFFilePath": "", "MappingKey": "SF005", "Active": false, "EffectiveDate": "", "ExpiryDate": "", "Remarks": ""},
+  {"SourceFormCode": "SF006", "Category": "Account Opening", "DisplayName": "Account Opening Form", "Version": "V01", "PDFFilePath": "", "MappingKey": "SF006", "Active": false, "EffectiveDate": "", "ExpiryDate": "", "Remarks": ""},
+  {"SourceFormCode": "SF007", "Category": "Bond", "DisplayName": "Bond Investment Form", "Version": "V01", "PDFFilePath": "", "MappingKey": "SF007", "Active": false, "EffectiveDate": "", "ExpiryDate": "", "Remarks": ""},
+  {"SourceFormCode": "SF008", "Category": "SI", "DisplayName": "SI Investment Form", "Version": "V01", "PDFFilePath": "", "MappingKey": "SF008", "Active": false, "EffectiveDate": "", "ExpiryDate": "", "Remarks": ""},
+  {"SourceFormCode": "SF009", "Category": "Banca", "DisplayName": "Banca Form", "Version": "V01", "PDFFilePath": "", "MappingKey": "SF009", "Active": false, "EffectiveDate": "", "ExpiryDate": "", "Remarks": ""},
+  {"SourceFormCode": "SF010", "Category": "ASNB", "DisplayName": "ASNB Form", "Version": "V01", "PDFFilePath": "", "MappingKey": "SF010", "Active": false, "EffectiveDate": "", "ExpiryDate": "", "Remarks": ""},
+  {"SourceFormCode": "SF011", "Category": "Insurance", "DisplayName": "Tokio Marine Subscription Form", "Version": "V01", "PDFFilePath": "", "MappingKey": "SF011", "Active": false, "EffectiveDate": "", "ExpiryDate": "", "Remarks": ""},
+  {"SourceFormCode": "SF012", "Category": "Insurance", "DisplayName": "Takaful Subscription Form", "Version": "V01", "PDFFilePath": "", "MappingKey": "SF012", "Active": false, "EffectiveDate": "", "ExpiryDate": "", "Remarks": ""},
+  {"SourceFormCode": "SF013", "Category": "Insurance", "DisplayName": "Tokio Marine Fund Switch Form", "Version": "V01", "PDFFilePath": "", "MappingKey": "SF013", "Active": false, "EffectiveDate": "", "ExpiryDate": "", "Remarks": ""},
+  {"SourceFormCode": "SF014", "Category": "Insurance", "DisplayName": "Takaful Fund Switch Form", "Version": "V01", "PDFFilePath": "", "MappingKey": "SF014", "Active": false, "EffectiveDate": "", "ExpiryDate": "", "Remarks": ""}
+]

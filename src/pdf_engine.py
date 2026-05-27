@@ -114,20 +114,22 @@ def _to_str(value) -> str:
 
 def _resolve(field: dict, client: dict, settings: dict) -> str:
     source = field.get("source", "data")
+    if "ExcelColumnOrField" in field and "name" not in field:
+        field = {**field, "name": field["ExcelColumnOrField"]}
     rm_profile = settings.get("_rm_profile", {})
     session = settings.get("_session", {})
 
     if source == "fixed":
-        raw = field.get("value", "")
+        raw = field.get("value", field.get("DefaultValue", ""))
     elif source == "rm_profile":
         key = field.get("profile_key") or field.get("name", "")
-        raw = rm_profile.get(key, field.get("value", ""))
+        raw = rm_profile.get(key, field.get("value", field.get("DefaultValue", "")))
     elif source == "session":
         key = field.get("session_key") or field.get("name", "")
-        raw = session.get(key, field.get("value", ""))
+        raw = session.get(key, field.get("value", field.get("DefaultValue", "")))
     elif source == "settings":
         key = field.get("settings_key") or field.get("name", "")
-        raw = settings.get(key, field.get("value", ""))
+        raw = settings.get(key, field.get("value", field.get("DefaultValue", "")))
     elif source == "auto":
         kind = field.get("auto_type") or field.get("name", "date")
         today = datetime.date.today()
@@ -142,8 +144,13 @@ def _resolve(field: dict, client: dict, settings: dict) -> str:
             return today.strftime("%B")
         return ""
     else:  # data
-        key = field.get("data_key") or field.get("name", "")
-        raw = client.get(key, "")
+        key = (
+            field.get("data_key")
+            or field.get("ExcelColumnOrField")
+            or field.get("ExcelColumn")
+            or field.get("name", "")
+        )
+        raw = client.get(key, field.get("DefaultValue", field.get("value", "")))
 
     if raw == "" or raw is None:
         return ""
@@ -163,13 +170,33 @@ def _make_overlay(pw: float, ph: float, fields: list[dict],
     for field in fields:
         value = _resolve(field, client, settings)
         if not value:
-            if field.get("required", False):
-                blanks.append(field.get("name", "?"))
+            if field.get("required", field.get("Required", False)):
+                blanks.append(field.get("DisplayLabel") or field.get("name", "?"))
             continue
-        font      = field.get("font",      settings.get("default_font",      "Helvetica"))
-        font_size = field.get("font_size", settings.get("default_font_size", 10))
+        font      = field.get("font") or field.get("FontFamily") or settings.get("default_font", "Helvetica")
+        font_size = field.get("font_size") or field.get("FontSize") or settings.get("default_font_size", 10)
+        try:
+            font_size = float(font_size)
+        except (TypeError, ValueError):
+            font_size = 10
+        max_width = field.get("max_width") or field.get("MaxWidth")
+        align     = str(field.get("alignment") or field.get("Alignment") or "left").lower()
+        if max_width:
+            try:
+                max_width = float(max_width)
+                while font_size > 6 and c.stringWidth(value, font, font_size) > max_width:
+                    font_size -= 0.5
+            except (TypeError, ValueError):
+                pass
         c.setFont(font, font_size)
-        c.drawString(field["x"], field["y"], value)
+        x = float(field.get("x", field.get("X")))
+        y = float(field.get("y", field.get("Y")))
+        if align == "right":
+            c.drawRightString(x, y, value)
+        elif align in {"center", "centre"}:
+            c.drawCentredString(x, y, value)
+        else:
+            c.drawString(x, y, value)
     c.save()
     return buf.getvalue(), blanks
 
@@ -214,7 +241,7 @@ def fill_form(template_path: Path, form_config: dict,
 
     by_page: dict[int, list] = {}
     for field in all_fields:
-        by_page.setdefault(field.get("page", 1), []).append(field)
+        by_page.setdefault(field.get("page", field.get("PageNumber", 1)), []).append(field)
 
     for i, page in enumerate(reader.pages):
         box = page.mediabox
@@ -275,7 +302,7 @@ def fill_bundle(application: dict, forms_config: dict,
         if not form_cfg:
             raise ValueError(
                 f"Form '{form_id}' not in forms.json. "
-                "Add it via CoordPicker or check spelling in applications.json."
+                "Add it via CoordPicker or check spelling in the procedure/source form mapping."
             )
         template_path = find_template_fn(settings, form_cfg["template_subfolder"],
                                          form_cfg)
