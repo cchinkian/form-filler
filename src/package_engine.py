@@ -7,6 +7,7 @@ PDF path and mapping key. The final output is one combined PDF per client.
 from __future__ import annotations
 
 import datetime
+import json
 import re
 import tempfile
 from pathlib import Path
@@ -319,9 +320,10 @@ def generate_package(
                 raise ValueError(f"{source_code} is inactive. Activate it only after the PDF path and mapping are ready.")
 
             pdf_path = catalog.resolve_source_pdf_path(source, settings)
-            if not pdf_path or not pdf_path.exists():
+            if not pdf_path or not pdf_path.exists() or not pdf_path.is_file():
+                problem = catalog.source_pdf_path_problem(source, settings)
                 raise FileNotFoundError(
-                    f"{source_code} PDF not found. Set PDFFilePath in source_forms.json."
+                    problem or f"{source_code} PDF not found. Set PDFFilePath in source_forms.json."
                 )
 
             mapping_key = catalog.mapping_key(source)
@@ -361,11 +363,30 @@ def generate_package(
         "client": fill_data,
         "procedure_code": procedure_code,
         "procedure_name": procedure_display_name(procedure),
+        "session": session,
+        "manual_values": manual_values,
     }
 
 
 def history_row(result: dict, generated_by: str = "") -> dict:
     client = result.get("client", {})
+    payload = {
+        "version": 1,
+        "client": {
+            "name": client.get("name") or client.get("client_name") or "",
+            "client_name": client.get("client_name") or client.get("name") or "",
+            "cis": client.get("cis") or client.get("cif_no") or "",
+            "cif_no": client.get("cif_no") or client.get("cis") or "",
+            "ic_number": client.get("ic_number") or "",
+        },
+        "procedure_code": result.get("procedure_code", ""),
+        "procedure_name": result.get("procedure_name", ""),
+        "session": result.get("session", {}),
+        "account": result.get("account", {}),
+        "manual_values": result.get("manual_values", {}),
+        "output_path": str(result.get("output_path", "")),
+        "status": result.get("status", ""),
+    }
     return {
         "GeneratedDateTime": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
         "ClientName": client.get("name") or client.get("client_name") or "",
@@ -381,6 +402,7 @@ def history_row(result: dict, generated_by: str = "") -> dict:
         "Status": result.get("status", ""),
         "ErrorMessage": " | ".join(result.get("warnings", [])),
         "GeneratedBy": generated_by,
+        "RestorePayload": json.dumps(payload, ensure_ascii=False, default=str),
     }
 
 
@@ -400,4 +422,5 @@ def error_history_row(client: dict, procedure: dict, status: str, error: str, ge
         "Status": status,
         "ErrorMessage": error,
         "GeneratedBy": generated_by,
+        "RestorePayload": "",
     }

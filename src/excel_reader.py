@@ -11,8 +11,10 @@ Fix-9: Native Python types preserved through reader.
 import re
 import shutil
 import datetime
+import json
 import openpyxl
 from pathlib import Path
+from openpyxl.utils import get_column_letter
 
 
 # ── IC normalization ──────────────────────────────────────────────────────────
@@ -688,6 +690,31 @@ HISTORY_COLUMNS = [
     "ErrorMessage",
     "GeneratedBy",
 ]
+HISTORY_PAYLOAD_COLUMN = "RestorePayload"
+HISTORY_ALL_COLUMNS = HISTORY_COLUMNS + [HISTORY_PAYLOAD_COLUMN]
+
+
+def _history_headers(ws) -> list[str]:
+    row = next(ws.iter_rows(min_row=1, max_row=1, values_only=True), [])
+    return [str(c).strip() if c else "" for c in row]
+
+
+def _ensure_history_headers(ws) -> list[str]:
+    if ws.max_row < 1:
+        ws.append(HISTORY_ALL_COLUMNS)
+    existing = _history_headers(ws)
+    if existing[:len(HISTORY_COLUMNS)] != HISTORY_COLUMNS:
+        ws.insert_rows(1)
+        for idx, col in enumerate(HISTORY_ALL_COLUMNS, 1):
+            ws.cell(row=1, column=idx, value=col)
+        existing = HISTORY_ALL_COLUMNS[:]
+    if HISTORY_PAYLOAD_COLUMN not in existing:
+        next_col = len(existing) + 1
+        ws.cell(row=1, column=next_col, value=HISTORY_PAYLOAD_COLUMN)
+        existing.append(HISTORY_PAYLOAD_COLUMN)
+    payload_idx = existing.index(HISTORY_PAYLOAD_COLUMN) + 1
+    ws.column_dimensions[get_column_letter(payload_idx)].hidden = True
+    return existing
 
 
 def append_history_rows(path: Path, rows: list[dict]) -> None:
@@ -701,21 +728,84 @@ def append_history_rows(path: Path, rows: list[dict]) -> None:
         wb = openpyxl.Workbook()
         ws = wb.active
         ws.title = "History"
-        ws.append(HISTORY_COLUMNS)
+        ws.append(HISTORY_ALL_COLUMNS)
 
-    existing = [
-        str(c.value).strip() if c.value else ""
-        for c in ws[1]
-    ]
-    if existing[:len(HISTORY_COLUMNS)] != HISTORY_COLUMNS:
-        ws.insert_rows(1)
-        for idx, col in enumerate(HISTORY_COLUMNS, 1):
-            ws.cell(row=1, column=idx, value=col)
+    existing = _ensure_history_headers(ws)
 
     for row in rows:
-        ws.append([row.get(col, "") for col in HISTORY_COLUMNS])
+        ws.append([row.get(col, "") for col in existing])
     wb.save(path)
     wb.close()
+
+
+def _history_match_key(customer: dict) -> tuple[str, str, str]:
+    cis = normalize_lookup_key(customer.get("cis") or customer.get("cif_no") or "")
+    ic = normalize_lookup_key(customer.get("ic_number") or customer.get("ic") or "")
+    name = normalize_lookup_key(customer.get("name") or customer.get("client_name") or "")
+    return cis, ic, name
+
+
+def _legacy_payload_from_history(row: dict) -> dict:
+    manual_values = {}
+    for col, key in [
+        ("Amount", "amount"),
+        ("FDDetails", "fd_details"),
+        ("ProductType", "product_type"),
+        ("ActionPurpose", "action_purpose"),
+        ("FollowUpNote", "follow_up_note"),
+    ]:
+        if row.get(col) not in ("", None):
+            manual_values[key] = row.get(col)
+    return {
+        "version": 0,
+        "procedure_code": row.get("ProcedureCode", ""),
+        "procedure_name": row.get("ProcedureName", ""),
+        "manual_values": manual_values,
+        "session": {},
+        "account": {},
+        "output_path": row.get("OutputFilePath", ""),
+    }
+
+
+def load_recent_history(path: Path, customer: dict, limit: int = 10) -> list[dict]:
+    if not path.exists() or not customer:
+        return []
+    target_cis, target_ic, target_name = _history_match_key(customer)
+    wb = _open_wb(path)
+    ws = wb.active
+    headers = _history_headers(ws)
+    rows = []
+    try:
+        for values in reversed(list(ws.iter_rows(min_row=2, values_only=True))):
+            row = {headers[idx]: (value if value is not None else "") for idx, value in enumerate(values) if idx < len(headers)}
+            payload_raw = row.get(HISTORY_PAYLOAD_COLUMN, "")
+            payload = {}
+            if payload_raw:
+                try:
+                    payload = json.loads(str(payload_raw))
+                except json.JSONDecodeError:
+                    payload = {}
+
+            payload_client = payload.get("client", {}) if isinstance(payload, dict) else {}
+            row_cis = normalize_lookup_key(row.get("CIS") or payload_client.get("cis") or payload_client.get("cif_no") or "")
+            row_ic = normalize_lookup_key(payload_client.get("ic_number") or payload_client.get("ic") or "")
+            row_name = normalize_lookup_key(row.get("ClientName") or payload_client.get("name") or payload_client.get("client_name") or "")
+            matches = (
+                (target_cis and row_cis == target_cis)
+                or (target_ic and row_ic == target_ic)
+                or (not target_cis and not target_ic and target_name and row_name == target_name)
+            )
+            if not matches:
+                continue
+            if not payload:
+                payload = _legacy_payload_from_history(row)
+            row["_payload"] = payload
+            rows.append(row)
+            if len(rows) >= limit:
+                break
+    finally:
+        wb.close()
+    return rows
 
 
 # ── Public loaders ────────────────────────────────────────────────────────────

@@ -203,6 +203,16 @@ def find_template(settings: dict, template_subfolder: str,
     """
     forms_folder = forms_folder_path(settings)
     subfolder    = forms_folder / template_subfolder
+    if not subfolder.exists():
+        raise FileNotFoundError(
+            f"Template subfolder not found:\n  {subfolder}\n"
+            "Choose an existing form folder or click refresh after creating it."
+        )
+    if not subfolder.is_dir():
+        raise NotADirectoryError(
+            f"Template subfolder is not a folder:\n  {subfolder}\n"
+            "Choose a folder that contains exactly one top-level PDF."
+        )
     pdfs = [p for p in subfolder.iterdir()
             if p.is_file() and p.suffix.lower() == ".pdf"]
 

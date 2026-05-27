@@ -9,6 +9,7 @@ Output: PDF-space coordinates (bottom-left origin).
   Use these values in forms.json field definitions.
 """
 import argparse
+import re
 import sys
 import tkinter as tk
 from tkinter import ttk, filedialog, messagebox
@@ -133,8 +134,8 @@ class CoordPickerApp(tk.Tk):
 
         # ── Form identity ──
         section(left, "1. Form identity")
-        lbl_entry(left, "MappingKey / SourceFormCode:", self._form_id)
-        lbl_entry(left, "Display name:", self._form_name_var)
+        lbl_entry(left, "Mapping key (auto):", self._form_id)
+        lbl_entry(left, "Display name (auto):", self._form_name_var)
 
         tk.Label(left, text="Template subfolder:", bg="#f0f0f0",
                  anchor="w").pack(fill=tk.X)
@@ -146,11 +147,13 @@ class CoordPickerApp(tk.Tk):
         self._cmb_subfolder.bind("<<ComboboxSelected>>",
                                   self._on_subfolder_selected)
         tk.Button(sub_row, text="↻", width=3,
-                  command=self._refresh_subfolders).pack(side=tk.LEFT, padx=2)
+                  command=lambda: self._refresh_subfolders(auto_open=True)).pack(side=tk.LEFT, padx=2)
         self._refresh_subfolders()
 
-        tk.Button(left, text="Open PDF…",
-                  command=self._open_pdf).pack(fill=tk.X, pady=(2, 4))
+        tk.Button(left, text="Open Folder PDF",
+                  command=lambda: self._load_pdf_from_subfolder(show_errors=True)).pack(fill=tk.X, pady=(2, 4))
+        tk.Button(left, text="Browse Other PDF…",
+                  command=self._open_pdf).pack(fill=tk.X, pady=(0, 4))
 
         # Page nav
         nav = tk.Frame(left, bg="#f0f0f0")
@@ -302,7 +305,7 @@ class CoordPickerApp(tk.Tk):
 
     # ── Subfolder auto-discovery ──────────────────────────────────────────────
 
-    def _refresh_subfolders(self):
+    def _refresh_subfolders(self, auto_open: bool = False):
         """Scan C:\\Forms (from settings) and populate subfolder dropdown."""
         try:
             settings = config_loader.load_settings()
@@ -310,8 +313,27 @@ class CoordPickerApp(tk.Tk):
             self._cmb_subfolder["values"] = folders
             if folders and not self._subfolder.get():
                 self._subfolder.set(folders[0])
+            if auto_open and self._subfolder.get():
+                self._on_subfolder_selected(auto_open=True)
         except Exception:
             pass  # settings.json may not exist yet
+
+    def _identity_from_subfolder(self, subfolder: str) -> tuple[str, str]:
+        text = str(subfolder or "").strip()
+        match = re.match(r"^\s*(SF\d{3,}[A-Z]?)\b\s*[-_ ]*(.*)$", text, flags=re.I)
+        if match:
+            code = match.group(1).upper()
+            name = match.group(2).strip(" -_") or code
+            return code, name
+        slug = re.sub(r"[^a-zA-Z0-9]+", "_", text).strip("_")
+        return slug or "FORM", text or slug or "Form"
+
+    def _apply_subfolder_identity_defaults(self, subfolder: str, force: bool = False):
+        code, name = self._identity_from_subfolder(subfolder)
+        if force or not self._form_id.get().strip():
+            self._form_id.set(code)
+        if force or not self._form_name_var.get().strip():
+            self._form_name_var.set(name)
 
     def _load_excel_schema(self):
         """Refresh Source/Excel field dropdowns from the current clients.xlsx."""
@@ -354,13 +376,12 @@ class CoordPickerApp(tk.Tk):
             }
         return "data", {"data_key": self._fname.get().strip()}
 
-    def _on_subfolder_selected(self, _=None):
-        """When RM picks a subfolder, auto-set form_id and try to load existing config."""
+    def _on_subfolder_selected(self, _=None, auto_open: bool = True, force_identity: bool = True):
+        """When RM picks a subfolder, auto-set identity, mapping, and PDF."""
         sub = self._subfolder.get()
         if not sub:
             return
-        if not self._form_id.get():
-            self._form_id.set(sub.lower().replace(" ", "_").replace("-", "_"))
+        self._apply_subfolder_identity_defaults(sub, force=force_identity)
         # Load existing form fields if already mapped
         try:
             forms = config_loader.load_forms()
@@ -371,14 +392,17 @@ class CoordPickerApp(tk.Tk):
                     self._form_id.set(fid)
                     self._form_name_var.set(fcfg.get("name", ""))
                     self._fields = list(fcfg.get("fields", []))
+                    self._selected_idx = None
                     self._refresh_list()
                     self._status(
                         f"Loaded existing mapping for '{fid}' "
                         f"({len(self._fields)} fields). "
-                        "Open PDF to re-map or add fields.")
+                        "Folder PDF loaded automatically when available.")
                     break
         except Exception:
             pass
+        if auto_open:
+            self._load_pdf_from_subfolder(show_errors=True)
 
     def _load_existing_form_mapping(self, fid: str) -> bool:
         """Load an existing mapping by MappingKey/SourceFormCode before editing."""
@@ -415,6 +439,26 @@ class CoordPickerApp(tk.Tk):
             return
         self._load_pdf_path(Path(path))
 
+    def _load_pdf_from_subfolder(self, show_errors: bool = False) -> bool:
+        if not HAS_DEPS:
+            return False
+        sub = self._subfolder.get().strip()
+        if not sub:
+            if show_errors:
+                messagebox.showwarning("No folder", "Choose a template subfolder first.")
+            return False
+        try:
+            settings = config_loader.load_settings()
+            path = config_loader.find_template(settings, sub)
+        except Exception as e:
+            if show_errors:
+                messagebox.showwarning("Template PDF not ready", str(e))
+            else:
+                self._status(str(e), "red")
+            return False
+        self._load_pdf_path(path)
+        return True
+
     def _load_pdf_path(self, path: Path):
         if not HAS_DEPS:
             return
@@ -424,8 +468,7 @@ class CoordPickerApp(tk.Tk):
         self._page_num = 1
         if not self._subfolder.get():
             self._subfolder.set(path.parent.name)
-        if not self._form_id.get():
-            self._form_id.set(path.parent.name.lower().replace(" ", "_"))
+        self._apply_subfolder_identity_defaults(self._subfolder.get() or path.parent.name, force=False)
         self._render()
 
     def _apply_startup_args(self):
@@ -449,6 +492,8 @@ class CoordPickerApp(tk.Tk):
             pdf_path = Path(args.pdf)
             if pdf_path.exists():
                 self._load_pdf_path(pdf_path)
+        elif args.subfolder:
+            self._on_subfolder_selected(auto_open=True, force_identity=not bool(args.form_id))
 
     def _render(self):
         if not self._doc:

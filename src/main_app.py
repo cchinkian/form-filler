@@ -59,6 +59,7 @@ class ProcedureAutomationApp(tk.Tk):
         self.bulk_rows: list[dict] = []
         self.builder_items: list[dict] = []
         self.selected_source_code: str | None = None
+        self.recent_history_rows: list[dict] = []
 
         try:
             config_loader.backup_settings_on_launch()
@@ -106,6 +107,7 @@ class ProcedureAutomationApp(tk.Tk):
         self.cmb_branch.pack(side=tk.LEFT, padx=(4, 14))
         ttk.Label(session, text="Date").pack(side=tk.LEFT)
         self.var_date = tk.StringVar(value=date.today().strftime("%d/%m/%Y"))
+        self.var_date.trace_add("write", lambda *_: self._refresh_generate_structure() if hasattr(self, "lst_gen_structure") else None)
         ttk.Entry(session, textvariable=self.var_date, width=14).pack(side=tk.LEFT, padx=(4, 0))
 
         self.nb = ttk.Notebook(self)
@@ -152,6 +154,12 @@ class ProcedureAutomationApp(tk.Tk):
         self.lbl_customer = ttk.Label(left, text="No customer selected.", anchor="w", font=("", 9, "bold"))
         self.lbl_customer.pack(fill=tk.X, pady=(0, 8))
 
+        recent_box = ttk.LabelFrame(left, text="Recent Client History")
+        recent_box.pack(fill=tk.X, pady=(0, 8))
+        self.lst_recent_history = tk.Listbox(recent_box, height=4, font=("Courier", 9), activestyle="dotbox")
+        self.lst_recent_history.pack(fill=tk.X, padx=6, pady=6)
+        self.lst_recent_history.bind("<<ListboxSelect>>", lambda _: self._restore_selected_history())
+
         proc_box = ttk.LabelFrame(left, text="Procedure")
         proc_box.pack(fill=tk.X, pady=(0, 8))
         row = ttk.Frame(proc_box, padding=6)
@@ -162,6 +170,7 @@ class ProcedureAutomationApp(tk.Tk):
         self.cmb_gen_category.pack(side=tk.LEFT, fill=tk.X, expand=True)
         self.cmb_gen_category.bind("<<ComboboxSelected>>", lambda _: self._refresh_generate_procedures())
         ttk.Button(row, text="Add Category", command=self._add_category_dialog).pack(side=tk.LEFT, padx=(4, 0))
+        ttk.Button(row, text="Edit Category", command=self._edit_category_dialog).pack(side=tk.LEFT, padx=(4, 0))
 
         row = ttk.Frame(proc_box, padding=(6, 0, 6, 6))
         row.pack(fill=tk.X)
@@ -203,7 +212,7 @@ class ProcedureAutomationApp(tk.Tk):
         self.lst_gen_structure = tk.Listbox(structure_box, height=10, font=("Courier", 9))
         self.lst_gen_structure.pack(fill=tk.BOTH, expand=True, padx=6, pady=6)
 
-        field_box = ttk.LabelFrame(right, text="Missing / Procedure Fields")
+        field_box = ttk.LabelFrame(right, text="Procedure Inputs")
         field_box.pack(fill=tk.BOTH, expand=True)
         self.canvas_manual = tk.Canvas(field_box, highlightthickness=0)
         self.frm_manual = ttk.Frame(self.canvas_manual)
@@ -277,6 +286,7 @@ class ProcedureAutomationApp(tk.Tk):
             self.builder_vars[key] = var
             if key == "Category":
                 widget = ttk.Combobox(row, textvariable=var, values=catalog.PROCEDURE_CATEGORIES)
+                self.cmb_builder_category = widget
             else:
                 widget = ttk.Entry(row, textvariable=var)
             widget.pack(side=tk.LEFT, fill=tk.X, expand=True)
@@ -336,9 +346,15 @@ class ProcedureAutomationApp(tk.Tk):
             ttk.Label(row, text=key, width=LABEL_W).pack(side=tk.LEFT)
             var = tk.StringVar()
             self.source_vars[key] = var
-            ttk.Entry(row, textvariable=var).pack(side=tk.LEFT, fill=tk.X, expand=True)
+            if key == "Category":
+                widget = ttk.Combobox(row, textvariable=var, state="normal")
+                self.cmb_source_category = widget
+            else:
+                widget = ttk.Entry(row, textvariable=var)
+            widget.pack(side=tk.LEFT, fill=tk.X, expand=True)
             if key == "PDFFilePath":
-                ttk.Button(row, text="Browse", command=self._browse_source_pdf).pack(side=tk.LEFT, padx=(4, 0))
+                ttk.Button(row, text="Browse PDF", command=self._browse_source_pdf).pack(side=tk.LEFT, padx=(4, 0))
+                ttk.Button(row, text="Browse Folder", command=self._browse_source_folder).pack(side=tk.LEFT, padx=(4, 0))
         self.var_source_active = tk.BooleanVar(value=True)
         ttk.Checkbutton(right, text="Active", variable=self.var_source_active).pack(anchor="w", padx=8, pady=(4, 0))
         btns = ttk.Frame(right, padding=6)
@@ -408,9 +424,7 @@ class ProcedureAutomationApp(tk.Tk):
             shutil.copy(example, path)
 
     def _refresh_all_controls(self):
-        categories = sorted({catalog.get_value(p, "Category") for p in self.procedures if catalog.is_active(p)})
-        if not categories:
-            categories = catalog.PROCEDURE_CATEGORIES
+        categories = self._category_values()
         for cmb, var in [
             (self.cmb_gen_category, self.var_gen_category),
             (self.cmb_bulk_category, self.var_bulk_category),
@@ -418,6 +432,10 @@ class ProcedureAutomationApp(tk.Tk):
             cmb["values"] = categories
             if not var.get() and categories:
                 var.set(categories[0])
+        if hasattr(self, "cmb_builder_category"):
+            self.cmb_builder_category["values"] = categories
+        if hasattr(self, "cmb_source_category"):
+            self.cmb_source_category["values"] = categories
 
         self._refresh_generate_procedures()
         self._refresh_bulk_procedures()
@@ -425,6 +443,7 @@ class ProcedureAutomationApp(tk.Tk):
         self._refresh_builder_procedures()
         self._refresh_source_forms()
         self._refresh_paths()
+        self._refresh_recent_history()
         rm_codes = self.staff_profile.get("staff_rm_codes") or self.staff_profile.get("rm_codes") or []
         branches = self.staff_profile.get("staff_branches") or self.staff_profile.get("branches") or []
         for cmb in [self.cmb_rm_code, getattr(self, "cmb_gen_rm_code", None)]:
@@ -435,6 +454,14 @@ class ProcedureAutomationApp(tk.Tk):
                 cmb["values"] = [""] + branches
         self.var_rm_code.set(self.settings.get("default_rm_code", "") or self._first_rm_code())
         self.var_branch.set(self.settings.get("default_branch", ""))
+
+    def _category_values(self) -> list[str]:
+        categories = set(catalog.PROCEDURE_CATEGORIES)
+        for row in [*self.procedures, *self.source_forms]:
+            category = str(catalog.get_value(row, "Category", "") or "").strip()
+            if category:
+                categories.add(category)
+        return sorted(categories)
 
     def _first_rm_code(self) -> str:
         codes = self.staff_profile.get("staff_rm_codes") or self.staff_profile.get("rm_codes") or []
@@ -522,8 +549,14 @@ class ProcedureAutomationApp(tk.Tk):
             if not name:
                 return
             values = sorted(set(list(self.cmb_gen_category["values"]) + [name]))
-            self.cmb_gen_category["values"] = values
-            self.cmb_bulk_category["values"] = values
+            for cmb in [
+                self.cmb_gen_category,
+                self.cmb_bulk_category,
+                getattr(self, "cmb_builder_category", None),
+                getattr(self, "cmb_source_category", None),
+            ]:
+                if cmb:
+                    cmb["values"] = values
             self.builder_vars["Category"].set(name)
             self.var_gen_category.set(name)
             self.var_bulk_category.set(name)
@@ -533,6 +566,60 @@ class ProcedureAutomationApp(tk.Tk):
         btns = ttk.Frame(dlg, padding=(12, 0, 12, 12))
         btns.pack(fill=tk.X)
         ttk.Button(btns, text="Create Procedure In This Category", command=save).pack(side=tk.LEFT)
+        ttk.Button(btns, text="Cancel", command=dlg.destroy).pack(side=tk.LEFT, padx=(6, 0))
+
+    def _edit_category_dialog(self):
+        old_name = self.var_gen_category.get().strip()
+        if not old_name:
+            messagebox.showwarning("No category", "Select a category first.")
+            return
+        dlg = tk.Toplevel(self)
+        dlg.title("Edit Category")
+        dlg.geometry("460x150")
+        dlg.grab_set()
+        var = tk.StringVar(value=old_name)
+        row = ttk.Frame(dlg, padding=12)
+        row.pack(fill=tk.X)
+        ttk.Label(row, text="Category", width=12).pack(side=tk.LEFT)
+        ttk.Entry(row, textvariable=var).pack(side=tk.LEFT, fill=tk.X, expand=True)
+
+        def save():
+            new_name = var.get().strip()
+            if not new_name:
+                return
+            if new_name == old_name:
+                dlg.destroy()
+                return
+            proc_changed = 0
+            source_changed = 0
+            for proc in self.procedures:
+                if catalog.get_value(proc, "Category") == old_name:
+                    proc["Category"] = new_name
+                    proc_changed += 1
+            for source in self.source_forms:
+                if catalog.get_value(source, "Category") == old_name:
+                    source["Category"] = new_name
+                    source_changed += 1
+            if proc_changed:
+                catalog.save_procedures(self.procedures)
+            if source_changed:
+                catalog.save_source_forms(self.source_forms)
+            self.var_gen_category.set(new_name)
+            self.var_bulk_category.set(new_name)
+            if self.builder_vars.get("Category") and self.builder_vars["Category"].get() == old_name:
+                self.builder_vars["Category"].set(new_name)
+            if self.source_vars.get("Category") and self.source_vars["Category"].get() == old_name:
+                self.source_vars["Category"].set(new_name)
+            dlg.destroy()
+            self._load_all()
+            self.var_gen_category.set(new_name)
+            self.var_bulk_category.set(new_name)
+            self._refresh_generate_procedures()
+            self._set_status(f"Renamed category '{old_name}' to '{new_name}'.")
+
+        btns = ttk.Frame(dlg, padding=(12, 0, 12, 12))
+        btns.pack(fill=tk.X)
+        ttk.Button(btns, text="Rename Category", command=save).pack(side=tk.LEFT)
         ttk.Button(btns, text="Cancel", command=dlg.destroy).pack(side=tk.LEFT, padx=(6, 0))
 
     def _new_procedure_from_generate(self, category: str | None = None):
@@ -545,6 +632,17 @@ class ProcedureAutomationApp(tk.Tk):
         proc = self._procedure_from_label(self.var_gen_proc.get())
         if not proc:
             return
+        try:
+            as_of = catalog.parse_catalog_date(self._normalize_date(self.var_date.get().strip())) or date.today()
+        except ValueError:
+            as_of = date.today()
+        issues = catalog.source_form_date_issues(
+            catalog.get_value(proc, "ProcedureCode"),
+            self.source_by_code,
+            self.procedure_items,
+            as_of=as_of,
+        )
+        issue_by_code = {item["code"]: item for item in issues}
         if self._auto_blank_enabled_for_proc(proc):
             self.lst_gen_structure.insert(tk.END, "Auto blank page: ON after odd-page source PDFs")
         for item in catalog.procedure_items_for(catalog.get_value(proc, "ProcedureCode")):
@@ -556,6 +654,9 @@ class ProcedureAutomationApp(tk.Tk):
                 code = catalog.get_value(item, "SourceFormCode")
                 src = self.source_by_code.get(code, {})
                 name = catalog.get_value(src, "DisplayName", code)
+                issue = issue_by_code.get(code)
+                if issue:
+                    name = f"{name} [{issue['level'].upper()}]"
                 self.lst_gen_structure.insert(tk.END, f"{step:>2}. {code:<6} {name}")
 
     def _refresh_manual_fields(self):
@@ -605,7 +706,7 @@ class ProcedureAutomationApp(tk.Tk):
             ttk.Button(row, text="Edit", command=lambda f=field: self._edit_default_field(f)).pack(side=tk.LEFT, padx=(4, 0))
 
         if editable_rows:
-            ttk.Label(self.frm_manual, text="Non-default Information", font=("", 9, "bold")).pack(anchor="w", padx=4, pady=(8, 2))
+            ttk.Label(self.frm_manual, text="Transaction / Form Inputs", font=("", 9, "bold")).pack(anchor="w", padx=4, pady=(8, 2))
         for field in editable_rows:
             row = ttk.Frame(self.frm_manual)
             row.pack(fill=tk.X, padx=4, pady=3)
@@ -686,6 +787,7 @@ class ProcedureAutomationApp(tk.Tk):
         self.lbl_customer.config(text=f"Selected: {self.selected_customer.get('name') or self.selected_customer.get('client_name') or '-'}")
         self._refresh_account_choices()
         self._refresh_manual_fields()
+        self._refresh_recent_history()
 
     def _account_type_for_procedure(self, proc: dict | None) -> str | None:
         if not proc:
@@ -747,6 +849,122 @@ class ProcedureAutomationApp(tk.Tk):
         client["_sheet_data"] = sheet_data
         return client
 
+    # Recent history restore ------------------------------------------------
+
+    def _refresh_recent_history(self):
+        if not hasattr(self, "lst_recent_history"):
+            return
+        self.recent_history_rows = []
+        self.lst_recent_history.delete(0, tk.END)
+        if not self.selected_customer:
+            self.lst_recent_history.insert(tk.END, "No customer selected")
+            return
+        try:
+            self.recent_history_rows = excel_reader.load_recent_history(
+                config_loader.history_log_path(self.settings),
+                self.selected_customer,
+                limit=10,
+            )
+        except ExcelLockedError:
+            self.lst_recent_history.insert(tk.END, "HistoryLog.xlsx is open")
+            return
+        except Exception:
+            self.lst_recent_history.insert(tk.END, "History unavailable")
+            return
+        if not self.recent_history_rows:
+            self.lst_recent_history.insert(tk.END, "No recent history")
+            return
+        for row in self.recent_history_rows:
+            self.lst_recent_history.insert(tk.END, self._history_label(row))
+
+    def _history_label(self, row: dict) -> str:
+        stamp = str(row.get("GeneratedDateTime", ""))[:16]
+        proc = str(row.get("ProcedureName") or row.get("ProcedureCode") or "-")[:28]
+        amount = str(row.get("Amount") or "")[:14]
+        status = str(row.get("Status") or "")[:18]
+        return f"{stamp:<16}  {proc:<28}  {amount:<14}  {status}"
+
+    def _restore_selected_history(self):
+        sel = self.lst_recent_history.curselection()
+        if not sel or sel[0] >= len(self.recent_history_rows):
+            return
+        row = self.recent_history_rows[sel[0]]
+        payload = row.get("_payload", {}) if isinstance(row.get("_payload"), dict) else {}
+        proc_code = payload.get("procedure_code") or row.get("ProcedureCode")
+        proc = self.procedure_by_code.get(proc_code)
+        if proc:
+            category = catalog.get_value(proc, "Category")
+            if category:
+                self.var_gen_category.set(category)
+                self._refresh_generate_procedures()
+            label = catalog.procedure_label(proc)
+            self.var_gen_proc.set(label)
+
+        session = payload.get("session", {}) if isinstance(payload.get("session"), dict) else {}
+        self._restore_session_from_history(session)
+        self._on_generate_proc_change()
+        self._restore_account_from_history(payload.get("account", {}))
+        self._refresh_manual_fields()
+        self._restore_manual_values_from_history(payload, row)
+        self._refresh_generate_structure()
+        self._set_status(f"Restored history: {row.get('ProcedureName') or row.get('ProcedureCode') or 'procedure'}")
+
+    def _restore_session_from_history(self, session: dict):
+        rm_code = session.get("staff_rm_code") or session.get("rm_code")
+        branch = session.get("rm_branch") or session.get("branch_code")
+        date_text = session.get("date")
+        if rm_code:
+            self.var_rm_code.set(str(rm_code))
+        if branch is not None:
+            self.var_branch.set(str(branch))
+        if date_text:
+            self.var_date.set(str(date_text))
+
+    def _restore_account_from_history(self, account_payload):
+        if not isinstance(account_payload, dict) or not account_payload:
+            return
+        label = account_payload.get("_label") or account_payload.get("common_name") or account_payload.get("account_number")
+        target_number = excel_reader.normalize_lookup_key(account_payload.get("account_number", ""))
+        target_common = excel_reader.normalize_lookup_key(account_payload.get("common_name", ""))
+        for row in self.account_rows:
+            row_label = row.get("_label") or row.get("common_name") or row.get("account_number")
+            if label and row_label == label:
+                self.var_account.set(row_label)
+                self.selected_account = dict(row)
+                return
+            if target_number and excel_reader.normalize_lookup_key(row.get("account_number", "")) == target_number:
+                self.var_account.set(row_label)
+                self.selected_account = dict(row)
+                return
+            if target_common and excel_reader.normalize_lookup_key(row.get("common_name", "")) == target_common:
+                self.var_account.set(row_label)
+                self.selected_account = dict(row)
+                return
+
+    def _restore_manual_values_from_history(self, payload: dict, row: dict):
+        manual = payload.get("manual_values", {}) if isinstance(payload.get("manual_values"), dict) else {}
+        if not manual:
+            manual = {
+                "amount": row.get("Amount", ""),
+                "fd_details": row.get("FDDetails", ""),
+                "product_type": row.get("ProductType", ""),
+                "action_purpose": row.get("ActionPurpose", ""),
+                "follow_up_note": row.get("FollowUpNote", ""),
+            }
+        normalized = {
+            excel_reader.normalize_header(k): v
+            for k, v in manual.items()
+            if v not in ("", None)
+        }
+        for identity, var in self.manual_entries.items():
+            if identity in manual:
+                var.set(str(manual[identity]))
+                continue
+            _, key = package_engine.split_field_identity(identity)
+            norm_key = excel_reader.normalize_header(key)
+            if norm_key in normalized:
+                var.set(str(normalized[norm_key]))
+
     # Generation ---------------------------------------------------------
 
     def _session_context(self) -> dict:
@@ -770,6 +988,26 @@ class ProcedureAutomationApp(tk.Tk):
     def _selected_generate_procedure(self) -> dict | None:
         return self._procedure_from_label(self.var_gen_proc.get())
 
+    def _confirm_source_form_dates(self, proc: dict, session: dict) -> bool:
+        as_of = catalog.parse_catalog_date(session.get("date")) or date.today()
+        issues = catalog.source_form_date_issues(
+            catalog.get_value(proc, "ProcedureCode"),
+            self.source_by_code,
+            self.procedure_items,
+            as_of=as_of,
+        )
+        blockers = [i["message"] for i in issues if i["level"] == "block"]
+        warnings = [i["message"] for i in issues if i["level"] == "warn"]
+        if blockers:
+            messagebox.showerror("Expired or not-yet-effective forms", "\n".join(blockers))
+            return False
+        if warnings:
+            return messagebox.askyesno(
+                "Forms near expiry",
+                "\n".join(warnings) + "\n\nContinue generating?",
+            )
+        return True
+
     def _generate_single(self):
         if not self.selected_customer:
             messagebox.showwarning("No customer", "Select a customer first.")
@@ -782,6 +1020,8 @@ class ProcedureAutomationApp(tk.Tk):
             session = self._session_context()
         except ValueError as e:
             messagebox.showerror("Bad date", str(e))
+            return
+        if not self._confirm_source_form_dates(proc, session):
             return
 
         manual = {k: v.get().strip() for k, v in self.manual_entries.items()}
@@ -809,6 +1049,7 @@ class ProcedureAutomationApp(tk.Tk):
                 session=session,
                 manual_values=manual,
             )
+            result["account"] = dict(self.selected_account or {})
         except Exception as e:
             try:
                 excel_reader.append_history_rows(
@@ -835,6 +1076,7 @@ class ProcedureAutomationApp(tk.Tk):
         message += history_warning
         messagebox.showinfo("Generated", message)
         self._set_status(f"Generated {result['output_path'].name}")
+        self._refresh_recent_history()
         if self.settings.get("auto_open_output", True):
             self._open_path(result["output_path"].parent)
 
@@ -891,6 +1133,8 @@ class ProcedureAutomationApp(tk.Tk):
             session = self._session_context()
         except ValueError as e:
             messagebox.showerror("Bad date", str(e))
+            return
+        if not self._confirm_source_form_dates(proc, session):
             return
 
         batch_root = config_loader.output_folder_path(self.settings) / f"BulkExport_{package_engine.yyyymmdd(session['date'])}"
@@ -1102,6 +1346,7 @@ class ProcedureAutomationApp(tk.Tk):
         self.var_source_active.set(catalog.is_active(src))
 
     def _new_source_form(self):
+        self.selected_source_code = None
         next_num = 1
         existing = {catalog.get_value(s, "SourceFormCode") for s in self.source_forms}
         while f"SF{next_num:03d}" in existing:
@@ -1110,6 +1355,7 @@ class ProcedureAutomationApp(tk.Tk):
             var.set("")
         code = f"SF{next_num:03d}"
         self.source_vars["SourceFormCode"].set(code)
+        self.source_vars["Category"].set(self.var_gen_category.get() or (self._category_values()[0] if self._category_values() else ""))
         self.source_vars["MappingKey"].set(code)
         self.source_vars["Version"].set("V01")
         self.var_source_active.set(True)
@@ -1149,10 +1395,7 @@ class ProcedureAutomationApp(tk.Tk):
             self._load_all()
         messagebox.showinfo("Auto detect complete", f"Added {added} source form(s).\nSkipped {skipped} folder(s).")
 
-    def _browse_source_pdf(self):
-        path = filedialog.askopenfilename(title="Select source PDF", filetypes=[("PDF", "*.pdf"), ("All", "*.*")])
-        if not path:
-            return
+    def _set_source_pdf_path(self, path: str | Path):
         p = Path(path)
         base = config_loader.forms_folder_path(self.settings)
         try:
@@ -1160,6 +1403,35 @@ class ProcedureAutomationApp(tk.Tk):
             self.source_vars["PDFFilePath"].set(str(rel))
         except ValueError:
             self.source_vars["PDFFilePath"].set(str(p))
+        self._autofill_source_identity_from_path(p, force_code=self.selected_source_code is None)
+
+    def _autofill_source_identity_from_path(self, path: Path, force_code: bool = False):
+        folder_name = path.name if path.is_dir() else path.parent.name
+        if not folder_name:
+            return
+        code = catalog.source_code_from_folder(folder_name)
+        display = folder_name
+        if code:
+            display = folder_name.replace(code, "", 1).strip(" -_") or code
+        if code and (force_code or not self.source_vars["SourceFormCode"].get().strip()):
+            self.source_vars["SourceFormCode"].set(code)
+            if force_code or not self.source_vars["MappingKey"].get().strip():
+                self.source_vars["MappingKey"].set(code)
+        if display and (
+            not self.source_vars["DisplayName"].get().strip()
+            or self.source_vars["DisplayName"].get().strip() == self.source_vars["SourceFormCode"].get().strip()
+        ):
+            self.source_vars["DisplayName"].set(display)
+
+    def _browse_source_pdf(self):
+        path = filedialog.askopenfilename(title="Select source PDF", filetypes=[("PDF", "*.pdf"), ("All", "*.*")])
+        if path:
+            self._set_source_pdf_path(path)
+
+    def _browse_source_folder(self):
+        path = filedialog.askdirectory(title="Select source form folder")
+        if path:
+            self._set_source_pdf_path(path)
 
     def _save_source_form(self):
         code = self.source_vars["SourceFormCode"].get().strip()
@@ -1170,6 +1442,17 @@ class ProcedureAutomationApp(tk.Tk):
         row["Active"] = self.var_source_active.get()
         if not row.get("MappingKey"):
             row["MappingKey"] = code
+        if row["Active"]:
+            problem = catalog.source_pdf_path_problem(row, self.settings)
+            if problem:
+                messagebox.showerror("PDF path issue", problem)
+                return
+            for key in ("EffectiveDate", "ExpiryDate"):
+                try:
+                    catalog.parse_catalog_date(row.get(key, ""))
+                except ValueError as e:
+                    messagebox.showerror("Bad date", f"{key}: {e}")
+                    return
         found = False
         for idx, src in enumerate(self.source_forms):
             if catalog.get_value(src, "SourceFormCode") == code:
@@ -1277,6 +1560,12 @@ class ProcedureAutomationApp(tk.Tk):
             "--form-id", catalog.mapping_key(src),
             "--display-name", catalog.get_value(src, "DisplayName", code),
         ]
+        raw_path = str(catalog.get_value(src, "PDFFilePath", "") or "").strip()
+        if raw_path:
+            raw = Path(raw_path)
+            candidate = raw if raw.is_absolute() else config_loader.forms_folder_path(self.settings) / raw
+            if candidate.is_dir():
+                args.extend(["--subfolder", raw_path])
         if pdf_path.exists():
             args.extend(["--pdf", str(pdf_path)])
         self._open_coord_picker(args)

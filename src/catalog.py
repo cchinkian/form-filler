@@ -10,6 +10,7 @@ import json
 import shutil
 from pathlib import Path
 import re
+import datetime
 
 import config_loader
 
@@ -203,6 +204,114 @@ def resolve_source_pdf_path(source_form: dict, settings: dict) -> Path:
         if len(pdfs) == 1:
             return pdfs[0]
     return candidate
+
+
+def source_pdf_path_problem(source_form: dict, settings: dict) -> str:
+    raw = str(get_value(source_form, "PDFFilePath", "") or "").strip()
+    code = get_value(source_form, "SourceFormCode", "Source form")
+    if not raw:
+        return f"{code} has no PDFFilePath."
+    path = Path(raw)
+    candidate = path if path.is_absolute() else config_loader.forms_folder_path(settings) / path
+    if candidate.is_dir():
+        pdfs = sorted(p for p in candidate.iterdir() if p.is_file() and p.suffix.lower() == ".pdf")
+        if len(pdfs) == 1:
+            return ""
+        names = ", ".join(p.name for p in pdfs) or "none"
+        return f"{code} folder must contain exactly one top-level PDF; found {len(pdfs)}: {names}."
+    if not candidate.exists():
+        return f"{code} PDF not found: {candidate}"
+    if not candidate.is_file():
+        return f"{code} PDFFilePath is not a PDF file or valid form folder: {candidate}"
+    if candidate.suffix.lower() != ".pdf":
+        return f"{code} PDFFilePath must point to a PDF or a folder with exactly one PDF."
+    return ""
+
+
+def parse_catalog_date(value) -> datetime.date | None:
+    text = str(value or "").strip()
+    if not text:
+        return None
+    if isinstance(value, datetime.datetime):
+        return value.date()
+    if isinstance(value, datetime.date):
+        return value
+    for fmt in ("%Y-%m-%d", "%d/%m/%Y", "%d-%m-%Y", "%Y%m%d"):
+        try:
+            return datetime.datetime.strptime(text, fmt).date()
+        except ValueError:
+            pass
+    raise ValueError(f"Cannot read date '{text}'. Use yyyy-mm-dd or dd/mm/yyyy.")
+
+
+def source_forms_for_procedure(
+    procedure_code: str,
+    source_forms: dict[str, dict],
+    procedure_items: list[dict],
+) -> list[dict]:
+    rows = []
+    items = sorted(
+        procedure_items,
+        key=lambda r: int(get_value(r, "StepNo", 0) or 0),
+    )
+    for item in items:
+        if get_value(item, "ProcedureCode") != procedure_code:
+            continue
+        if get_value(item, "ItemType") != "SourceForm":
+            continue
+        source = source_forms.get(get_value(item, "SourceFormCode"))
+        if source:
+            rows.append(source)
+    return rows
+
+
+def source_form_date_issues(
+    procedure_code: str,
+    source_forms: dict[str, dict],
+    procedure_items: list[dict],
+    as_of: datetime.date | None = None,
+    near_expiry_days: int = 30,
+) -> list[dict]:
+    as_of = as_of or datetime.date.today()
+    issues = []
+    for source in source_forms_for_procedure(procedure_code, source_forms, procedure_items):
+        if not is_active(source):
+            continue
+        code = get_value(source, "SourceFormCode")
+        name = get_value(source, "DisplayName", code)
+        try:
+            effective = parse_catalog_date(get_value(source, "EffectiveDate", ""))
+            expiry = parse_catalog_date(get_value(source, "ExpiryDate", ""))
+        except ValueError as e:
+            issues.append({
+                "level": "block",
+                "code": code,
+                "name": name,
+                "message": f"{code} {name}: {e}",
+            })
+            continue
+        if effective and effective > as_of:
+            issues.append({
+                "level": "block",
+                "code": code,
+                "name": name,
+                "message": f"{code} {name}: effective only from {effective:%Y-%m-%d}.",
+            })
+        if expiry and expiry < as_of:
+            issues.append({
+                "level": "block",
+                "code": code,
+                "name": name,
+                "message": f"{code} {name}: expired on {expiry:%Y-%m-%d}.",
+            })
+        elif expiry and 0 <= (expiry - as_of).days <= near_expiry_days:
+            issues.append({
+                "level": "warn",
+                "code": code,
+                "name": name,
+                "message": f"{code} {name}: expires on {expiry:%Y-%m-%d}.",
+            })
+    return issues
 
 
 def mapping_key(source_form: dict) -> str:

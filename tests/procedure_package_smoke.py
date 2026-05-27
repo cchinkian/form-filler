@@ -10,6 +10,7 @@ from reportlab.pdfgen import canvas
 import pypdf
 
 import excel_reader
+import catalog
 import package_engine
 
 
@@ -483,6 +484,121 @@ def test_auto_blank_does_not_double_insert_before_manual_blank() -> None:
         assert (reader.pages[1].extract_text() or "").strip() == ""
 
 
+def test_source_folder_requires_exactly_one_top_level_pdf() -> None:
+    with tempfile.TemporaryDirectory() as td:
+        root = Path(td)
+        forms_root = root / "forms"
+        folder = forms_root / "SF001 Sample"
+        folder.mkdir(parents=True)
+        _make_pdf(folder / "one.pdf", "ONE")
+        _make_pdf(folder / "two.pdf", "TWO")
+
+        source = {
+            "SourceFormCode": "SF001",
+            "PDFFilePath": "SF001 Sample",
+            "Active": True,
+        }
+        problem = catalog.source_pdf_path_problem(source, {"forms_folder": str(forms_root)})
+        assert "exactly one top-level PDF" in problem
+
+        try:
+            package_engine.generate_package(
+                procedure={"ProcedureCode": "PROC", "DisplayName": "Bad Folder", "Active": True},
+                source_forms={"SF001": source},
+                procedure_items=[{"ProcedureCode": "PROC", "StepNo": 1, "ItemType": "SourceForm", "SourceFormCode": "SF001"}],
+                forms_config={"SF001": {"fields": []}},
+                client={"name": "Avery Tan"},
+                settings={"forms_folder": str(forms_root), "default_font_size": 10},
+                output_root=root / "output",
+                session={"date": "19/05/2026"},
+            )
+        except FileNotFoundError as e:
+            assert "exactly one top-level PDF" in str(e)
+        else:
+            raise AssertionError("Expected folder with multiple PDFs to fail")
+
+
+def test_source_form_date_issues() -> None:
+    source_forms = {
+        "SF_OLD": {
+            "SourceFormCode": "SF_OLD",
+            "DisplayName": "Old Form",
+            "Active": True,
+            "ExpiryDate": "2026-05-01",
+        },
+        "SF_SOON": {
+            "SourceFormCode": "SF_SOON",
+            "DisplayName": "Soon Form",
+            "Active": True,
+            "ExpiryDate": "2026-05-30",
+        },
+    }
+    items = [
+        {"ProcedureCode": "PROC", "StepNo": 1, "ItemType": "SourceForm", "SourceFormCode": "SF_OLD"},
+        {"ProcedureCode": "PROC", "StepNo": 2, "ItemType": "SourceForm", "SourceFormCode": "SF_SOON"},
+    ]
+
+    issues = catalog.source_form_date_issues(
+        "PROC",
+        source_forms,
+        items,
+        as_of=catalog.parse_catalog_date("2026-05-27"),
+    )
+
+    assert [i["level"] for i in issues] == ["block", "warn"]
+    assert "expired" in issues[0]["message"]
+    assert "expires" in issues[1]["message"]
+
+
+def test_recent_history_payload_round_trip_and_legacy_fallback() -> None:
+    with tempfile.TemporaryDirectory() as td:
+        path = Path(td) / "HistoryLog.xlsx"
+        result = {
+            "output_path": Path(td) / "out.pdf",
+            "warnings": [],
+            "status": "Success",
+            "client": {
+                "name": "Avery Tan",
+                "client_name": "Avery Tan",
+                "cis": "CIS001",
+                "ic_number": "900101101234",
+                "amount": "25000",
+                "product_type": "UT",
+                "action_purpose": "Subscribe",
+            },
+            "procedure_code": "P010",
+            "procedure_name": "UT Investment",
+            "session": {"date": "27/05/2026", "staff_rm_code": "RM001", "rm_branch": "KLG"},
+            "account": {"common_name": "Avery UT", "account_number": "UT001", "_label": "Avery UT | UT | UT001"},
+            "manual_values": {
+                "default_investment::amount": "25000",
+                "default_investment::product_type": "UT",
+            },
+        }
+        excel_reader.append_history_rows(path, [package_engine.history_row(result, "CK Staff")])
+        excel_reader.append_history_rows(path, [{
+            "GeneratedDateTime": "2026-05-26 10:00:00",
+            "ClientName": "Avery Tan",
+            "CIS": "CIS001",
+            "ProcedureCode": "P004",
+            "ProcedureName": "FD Bundle",
+            "OutputFilePath": "",
+            "Amount": "10000",
+            "ProductType": "FD",
+            "ActionPurpose": "Renewal",
+            "Status": "Success",
+        }])
+
+        rows = excel_reader.load_recent_history(path, {"cis": "CIS001", "name": "Avery Tan"}, limit=10)
+
+        assert len(rows) == 2
+        assert rows[0]["ProcedureCode"] == "P004"
+        assert rows[0]["_payload"]["manual_values"]["amount"] == "10000"
+        assert rows[1]["ProcedureCode"] == "P010"
+        assert rows[1]["_payload"]["manual_values"]["default_investment::amount"] == "25000"
+        assert rows[1]["_payload"]["account"]["account_number"] == "UT001"
+
+
 def main() -> None:
     test_package_engine_generates_ordered_combined_pdf()
     test_load_staff_profile_from_excel_table()
@@ -491,6 +607,9 @@ def main() -> None:
     test_sheet_aware_fields_and_manual_values()
     test_auto_blank_after_odd_pages()
     test_auto_blank_does_not_double_insert_before_manual_blank()
+    test_source_folder_requires_exactly_one_top_level_pdf()
+    test_source_form_date_issues()
+    test_recent_history_payload_round_trip_and_legacy_fallback()
     print("OK: procedure package smoke")
 
 

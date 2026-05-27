@@ -1,3 +1,204 @@
+## Current Handoff — 2026-05-27
+### Current Product Direction
+The active product is now the **Offline Windows PDF Procedure Automation Tool**.
+
+Core flow:
+
+`Search customer -> choose procedure/package -> choose related account if needed -> review default/procedure inputs -> generate PDF package -> log to Excel`
+
+The app is local-only and offline. Do not add cloud sync, login, API validation, CRM, manager approval, OCR, email/WhatsApp sending, SQLite/server database, or online form update features for Version 1.
+
+### Latest Release
+- Release tag: `procedure-automation-workflow-update-2026-05-27`
+- Release page: https://github.com/cchinkian/form-filler/releases/tag/procedure-automation-workflow-update-2026-05-27
+- Latest app ZIP: https://github.com/cchinkian/form-filler/releases/latest/download/FormFiller-portable.zip
+- Latest synthetic test work folder ZIP: https://github.com/cchinkian/form-filler/releases/latest/download/FormFiller_Test_WorkFolder_20260527.zip
+- GitHub Windows build: `26516755329`
+- Latest release assets:
+  - `FormFiller-portable.zip` — contains `FormFiller.exe`, `CoordPicker.exe`, `config/`, `data/`
+  - `FormFiller_Test_WorkFolder_20260527.zip` — refreshed sample work folder with 57 synthetic form folders
+- `GreenTest.exe` is no longer required and is not included in the latest portable ZIP.
+
+### Latest Commits
+- `d0a65b6` — `Improve mapping and procedure workflows`
+- `a6417c6` — `Fix review findings for workflow update`
+
+### Verification Completed
+- `python3 -m py_compile src/catalog.py src/config_loader.py src/excel_reader.py src/pdf_engine.py src/package_engine.py src/coord_picker.py src/main_app.py`
+- `python3 tests/procedure_package_smoke.py`
+- `python3 tests/sales_flow_smoke.py`
+- `git diff --check`
+- GitHub Actions Windows build passed for run `26516755329`.
+- Downloaded and inspected `FormFiller-portable.zip`:
+  - `FormFiller.exe` present.
+  - `CoordPicker.exe` present.
+  - `GreenTest.exe` absent.
+  - `config/settings.json` and `data/clients_template.xlsx` present.
+
+### Current Local Changes Not Yet Released
+- Source Forms now has a `Category` dropdown populated from existing procedure/source-form categories.
+- Generate tab now has `Edit Category`; renaming a category updates matching procedures and source forms.
+- Source Forms PDF path UI now has separate `Browse PDF` and `Browse Folder` buttons.
+- Choosing a Source Form folder now auto-fills internal SourceFormCode/MappingKey/DisplayName from the folder name where possible, so those fields are less manual.
+- Active source forms validate `PDFFilePath` on save. Folder paths must contain exactly one top-level PDF; duplicate-PDF warnings include the PDF filenames.
+- Package generation now refuses invalid source folder paths instead of trying to process the folder as a PDF.
+- `EffectiveDate` / `ExpiryDate` are now checked before single and bulk generation:
+  - Not-yet-effective and expired active forms block generation.
+  - Forms expiring within 30 days show a confirmation warning.
+  - Procedure Structure marks date issues with `[BLOCK]` or `[WARN]`.
+- Generate screen wording changed from `Non-default Information` to `Transaction / Form Inputs`.
+- Generate screen now shows `Recent Client History` for the selected customer, limited to 10 rows.
+- Clicking a recent history row restores the previous procedure, account, session values, and mapped procedure inputs when available.
+- `HistoryLog.xlsx` keeps existing visible columns and adds a hidden `RestorePayload` column for restoreable state. Older history rows still restore basic values where possible.
+- CoordPicker is now folder-first: selecting or refreshing `Template subfolder` derives the mapping key/display name from the folder and auto-loads the single top-level PDF using `config_loader.find_template`.
+- Opening Mapping Editor from Source Forms passes the source folder to CoordPicker, so the Template subfolder dropdown and the loaded PDF stay linked.
+
+### Local Verification For Current Changes
+- `python3 -m py_compile src/catalog.py src/config_loader.py src/excel_reader.py src/pdf_engine.py src/package_engine.py src/coord_picker.py src/main_app.py`
+- `python3 tests/procedure_package_smoke.py`
+- `python3 tests/sales_flow_smoke.py`
+- `git diff --check`
+
+### Current Architecture
+- Procedures are not stored as pre-combined PDFs.
+- A Procedure is an ordered list of Source Forms.
+- A Source Form is the real PDF/form folder plus one mapping key.
+- The generation engine dynamically combines latest active source forms.
+- Source form PDF paths can point to a folder; the app auto-picks exactly one top-level PDF in that folder.
+- Old form versions should be placed inside an `old/` subfolder inside that form folder.
+- Source form folder paths are valid only when exactly one top-level PDF is present.
+- Source Form category is now a dropdown, and category rename is supported from the Generate tab.
+- SourceFormCode/MappingKey/DisplayName remain internal identifiers, but the UI now derives them from the selected folder when possible.
+- `ExpiryDate` / `EffectiveDate` are validated before generation; expired/not-yet-effective forms block generation and near-expiry forms warn.
+- Coordinate overlay remains the main PDF strategy, so scanned/flat PDFs are supported by placing text over the PDF background.
+
+### Current Excel Workbook Structure
+The current default workbook sheets are:
+
+- `default_clients`
+- `default_accounts`
+- `default_investment`
+- `default_insurance`
+- `default_staff`
+- `bulk_cis_template`
+- `history_log`
+
+Important details:
+- Headers starting with `*` are default/locked fields, e.g. `*cis`, `*name`, `*ic_number`.
+- Default/locked values show in the Default Section.
+- The Default Section now has an Edit button that writes back to `clients.xlsx` after making a backup.
+- `.xlsm` write-back preserves VBA by opening with `keep_vba=True`.
+- `default_accounts` supports `common_name`, `account_type`, `account_number`, primary holder, and joint holders.
+- Related Account dropdown uses `common_name` so the user can choose the correct UT/Bond/SI/account relationship.
+- CIS is used for matching and logs, but should not appear in output filenames.
+- `HistoryLog.xlsx` now keeps a hidden `RestorePayload` column for richer restore/reuse from recent client history while preserving the visible history columns.
+
+### Mapping Editor Decisions
+Current format choices:
+
+- `text`
+- `ic_dashed`
+- `currency_2_decimals`
+- `currency_4_decimals`
+- `currency_no_decimals`
+- `date_ddmmyyyy`
+- `date_27_May_2026`
+- `all_uppercase`
+- `1st_letter_case`
+
+Removed/renamed old format names:
+- `currency_myr`
+- `currency_no_symbol`
+- `date_dmy`
+- `date_dmy_long`
+- `phone_dashed`
+- `uppercase`
+- `integer`
+
+User explicitly preferred not to keep old internal aliases. Existing old mappings should be updated to the new format names.
+
+Mapping Editor current behavior:
+- Source dropdown uses real sheet names from `clients.xlsx` plus `Session Input`, `Fixed Text`, and `Auto Date`.
+- Excel fields can be reloaded after workbook header changes.
+- Field ID / Excel field entry auto-suggests fields from the selected sheet.
+- Format auto-suggests from the field name.
+- Phone/mobile/contact/WhatsApp defaults to `text`.
+- Red markers can be selected.
+- Selected fields can be updated/deleted.
+- Marker/box can be dragged.
+- Box width can be resized visually by dragging the right-side handle.
+- Field list can select the mapped field.
+- Clear Page and Clear All are available with confirmation.
+- Opening Mapping Editor from Source Forms now loads existing mapping first, so saving will not wipe previous mappings.
+
+### Procedure Builder Decisions
+- User wants a left list of available source forms and a right list of procedure sequence.
+- Implemented searchable left source-form list, Add button, double-click add, Remove, Up, Down, Save.
+- Inactive source forms cannot be added to a procedure.
+- Adding/editing category/procedure from the Generate tab is supported.
+- True drag-and-drop reorder is not implemented yet; current reorder uses Up/Down buttons.
+- Blank pages are now mainly auto-inserted after odd-page source PDFs.
+- Auto blank follows the previous page size/orientation.
+- Manual blank page remains available as an advanced option.
+- Auto blank avoids double-inserting immediately before a manual BlankPage item.
+- Auto blank defaults ON for missing old settings/procedure values.
+
+### Branch/Staff Decisions
+- Branch should stay blank when the user leaves Branch blank.
+- Do not auto-fill branch from customer branch in Excel.
+- Staff info lives in `default_staff`:
+  - `staff_name`
+  - `staff_ic`
+  - `staff_id`
+  - `fimm_id`
+  - `ippc_id`
+  - `staff_position`
+  - `staff_rm_codes`
+  - `staff_branches`
+- Leader/approval information should not be auto-filled for Version 1.
+- Approval/signature areas are left for handwriting.
+
+### Test Work Folder
+Local refreshed folder:
+
+`/Users/ck_macmini/Downloads/FormFiller_Test_WorkFolder_20260527`
+
+ZIP:
+
+`/Users/ck_macmini/Downloads/FormFiller_Test_WorkFolder_20260527.zip`
+
+Inside the ZIP:
+
+`FormFiller_Test_WorkFolder_20260527/5.SOP Folder/All About Series/All About Series - Investment Basic Forms/Automate/`
+
+The refreshed test folder:
+- Uses the current workbook sheet names.
+- Contains `default_accounts` with account `common_name` examples.
+- Has no old mapping format names.
+- Has no manual blank rows in sample procedure items.
+- Uses folder-based source form paths.
+- Includes sample generated PDFs.
+
+### Known Gaps / Next Work
+- Recent history restore depends on new `RestorePayload` for full fidelity; older log rows restore only basic fields such as procedure and common transaction inputs.
+- Bulk export currently prioritizes one same Procedure for the whole batch.
+- Mixed procedure per client in one bulk batch remains deferred.
+- Account selection is implemented for the single-customer Generate tab; bulk export does not yet choose per-client account rows.
+- True drag-and-drop in Procedure Builder is still a future improvement.
+- Search primarily loads customer rows from customer sheets; account-only joint holder search may still need improvement if a joint holder exists only in `default_accounts` and not `default_clients`.
+- Default-field write-back updates one existing matched row; it is not a full Excel data-entry system.
+- UI is still Tkinter/admin-tool style. It is functional but can be redesigned further if the user wants a more polished interface.
+
+### Local Repo Notes
+- Current repo path: `/Users/ck_macmini/Documents/tools/form_filler`
+- GitHub repo: `cchinkian/form-filler`
+- Current branch: `main`
+- Untracked local files exist and should not be touched unless user asks:
+  - `docs/business_opportunity.md`
+  - `review by claude and codex.md`
+
+---
+
 ## Session 2026-05-19
 ### Goal
 Simplify FormFiller into the clean daily sales workflow:
