@@ -16,6 +16,7 @@ Coordinates: (0,0) = bottom-left. A4 top ≈ y=842.
 import csv
 import io
 import datetime
+import re
 from pathlib import Path
 
 from reportlab.pdfgen import canvas as rl_canvas
@@ -114,6 +115,10 @@ def _to_str(value) -> str:
     return str(value).strip()
 
 
+def _normalize_sheet_key(raw) -> str:
+    return re.sub(r"[^a-z0-9]+", "_", str(raw or "").strip().lower()).strip("_")
+
+
 def _resolve(field: dict, client: dict, settings: dict) -> str:
     source = field.get("source", "data")
     if "ExcelColumnOrField" in field and "name" not in field:
@@ -156,13 +161,17 @@ def _resolve(field: dict, client: dict, settings: dict) -> str:
         sheet = field.get("excel_sheet") or field.get("ExcelSheet")
         sheet_data = client.get("_sheet_data", {})
         if sheet:
-            raw = (
-                sheet_data.get(sheet, {}).get(key)
-                if isinstance(sheet_data, dict) else None
-            )
-            if raw in ("", None):
-                raw = sheet_data.get(str(sheet).lower(), {}).get(key) if isinstance(sheet_data, dict) else None
-            if raw in ("", None):
+            raw = None
+            found_sheet = False
+            if isinstance(sheet_data, dict):
+                for candidate in (sheet, _normalize_sheet_key(sheet), str(sheet).lower()):
+                    bucket = sheet_data.get(candidate, {})
+                    if isinstance(bucket, dict):
+                        found_sheet = True
+                        raw = bucket.get(key)
+                    if raw not in ("", None):
+                        break
+            if raw in ("", None) and not found_sheet:
                 raw = client.get(key, field.get("DefaultValue", field.get("value", "")))
         else:
             raw = client.get(key, field.get("DefaultValue", field.get("value", "")))

@@ -35,6 +35,7 @@ class ProcedureAutomationApp(tk.Tk):
         self.title("PDF Procedure Automation")
         self.geometry("1120x760")
         self.minsize(980, 640)
+        self._set_window_icon()
 
         self.settings: dict = {}
         self.forms_config: dict = {}
@@ -66,6 +67,21 @@ class ProcedureAutomationApp(tk.Tk):
 
         self._build_ui()
         self._load_all()
+
+    def _set_window_icon(self):
+        bases = []
+        if getattr(sys, "frozen", False):
+            bases.append(Path(getattr(sys, "_MEIPASS", Path(sys.executable).parent)))
+            bases.append(Path(sys.executable).parent)
+        bases.append(Path(__file__).resolve().parents[1])
+        for base in bases:
+            icon = base / "assets" / "app.ico"
+            if icon.exists():
+                try:
+                    self.iconbitmap(default=str(icon))
+                    return
+                except tk.TclError:
+                    continue
 
     # UI -----------------------------------------------------------------
 
@@ -439,6 +455,16 @@ class ProcedureAutomationApp(tk.Tk):
         code = str(label).split(" - ", 1)[0].strip()
         return self.procedure_by_code.get(code)
 
+    def _auto_blank_enabled_for_proc(self, proc: dict | None) -> bool:
+        if not proc:
+            return bool(self.settings.get("auto_blank_after_odd", True))
+        raw = catalog.get_value(proc, "AutoBlankAfterOdd", None)
+        if raw in ("", None):
+            raw = self.settings.get("auto_blank_after_odd", True)
+        if isinstance(raw, bool):
+            return raw
+        return str(raw).strip().lower() in {"1", "yes", "y", "true", "on"}
+
     def _source_labels(self) -> list[str]:
         labels = []
         for source in self.source_forms:
@@ -519,7 +545,7 @@ class ProcedureAutomationApp(tk.Tk):
         proc = self._procedure_from_label(self.var_gen_proc.get())
         if not proc:
             return
-        if str(catalog.get_value(proc, "AutoBlankAfterOdd", True)).strip().lower() not in {"false", "0", "no"}:
+        if self._auto_blank_enabled_for_proc(proc):
             self.lst_gen_structure.insert(tk.END, "Auto blank page: ON after odd-page source PDFs")
         for item in catalog.procedure_items_for(catalog.get_value(proc, "ProcedureCode")):
             step = catalog.get_value(item, "StepNo")
@@ -553,14 +579,16 @@ class ProcedureAutomationApp(tk.Tk):
         for field in all_fields:
             key = field["key"]
             sheet = field.get("excel_sheet", "")
+            identity = package_engine.field_identity(field)
+            value = package_engine.field_value(selected, field)
             is_default = key in self.default_fields.get(sheet, set()) or key in self.default_fields.get(excel_reader.normalize_header(sheet), set())
-            show_required_missing = field["required"] and selected.get(key) in ("", None)
+            show_required_missing = field["required"] and value in ("", None)
             show_procedure_specific = key not in package_engine.COMMON_DATA_FIELDS
-            if is_default and selected.get(key) not in ("", None) and key not in seen:
-                seen.add(key)
+            if is_default and identity not in seen:
+                seen.add(identity)
                 default_rows.append(field)
-            elif (show_required_missing or show_procedure_specific) and key not in seen:
-                seen.add(key)
+            elif (show_required_missing or show_procedure_specific) and identity not in seen:
+                seen.add(identity)
                 editable_rows.append(field)
         if not default_rows and not editable_rows:
             ttk.Label(self.frm_manual, text="No mapped procedure-specific fields.").pack(anchor="w", padx=4, pady=4)
@@ -573,7 +601,7 @@ class ProcedureAutomationApp(tk.Tk):
             row.pack(fill=tk.X, padx=4, pady=3)
             label = field["label"] + (" *" if field["required"] else "")
             ttk.Label(row, text=label, width=24).pack(side=tk.LEFT)
-            ttk.Label(row, text=str(selected.get(field["key"], "") or ""), relief="sunken", anchor="w").pack(side=tk.LEFT, fill=tk.X, expand=True)
+            ttk.Label(row, text=str(package_engine.field_value(selected, field) or ""), relief="sunken", anchor="w").pack(side=tk.LEFT, fill=tk.X, expand=True)
             ttk.Button(row, text="Edit", command=lambda f=field: self._edit_default_field(f)).pack(side=tk.LEFT, padx=(4, 0))
 
         if editable_rows:
@@ -583,16 +611,55 @@ class ProcedureAutomationApp(tk.Tk):
             row.pack(fill=tk.X, padx=4, pady=3)
             label = field["label"] + (" *" if field["required"] else "")
             ttk.Label(row, text=label, width=24).pack(side=tk.LEFT)
-            var = tk.StringVar(value=str(selected.get(field["key"], "") or ""))
+            var = tk.StringVar(value=str(package_engine.field_value(selected, field) or ""))
             ttk.Entry(row, textvariable=var).pack(side=tk.LEFT, fill=tk.X, expand=True)
-            self.manual_entries[field["key"]] = var
+            self.manual_entries[package_engine.field_identity(field)] = var
 
     def _edit_default_field(self, field: dict):
-        messagebox.showinfo(
-            "Default field edit",
-            "Default-field write-back to clients.xlsx will be enabled with backup, confirmation, and change log.\n\n"
-            "For now, edit this default value in clients.xlsx and click Reload."
-        )
+        if not self.selected_customer:
+            messagebox.showwarning("No customer", "Select a customer first.")
+            return
+        sheet = field.get("excel_sheet") or ""
+        if not sheet:
+            messagebox.showwarning("No sheet", "This default field is not linked to a clients.xlsx sheet.")
+            return
+        client = self._client_with_selected_account()
+        old_value = package_engine.field_value(client, field)
+
+        dlg = tk.Toplevel(self)
+        dlg.title("Edit Default Field")
+        dlg.geometry("520x170")
+        dlg.grab_set()
+        var = tk.StringVar(value=str(old_value or ""))
+        body = ttk.Frame(dlg, padding=12)
+        body.pack(fill=tk.BOTH, expand=True)
+        ttk.Label(body, text=f"{sheet} / {field['key']}").pack(anchor="w")
+        ttk.Entry(body, textvariable=var).pack(fill=tk.X, pady=(6, 8))
+        ttk.Label(body, text="This updates clients.xlsx after creating a backup.").pack(anchor="w")
+
+        def save():
+            try:
+                excel_reader.update_customer_field(
+                    config_loader.customer_workbook_path(self.settings),
+                    client,
+                    sheet,
+                    field["key"],
+                    var.get().strip(),
+                )
+            except ExcelLockedError as e:
+                messagebox.showerror("Excel is open", str(e))
+                return
+            except Exception as e:
+                messagebox.showerror("Update failed", str(e))
+                return
+            dlg.destroy()
+            self._load_all()
+            messagebox.showinfo("Updated", "clients.xlsx updated. Data reloaded.")
+
+        btns = ttk.Frame(body)
+        btns.pack(fill=tk.X)
+        ttk.Button(btns, text="Update Excel", command=save).pack(side=tk.LEFT)
+        ttk.Button(btns, text="Cancel", command=dlg.destroy).pack(side=tk.LEFT, padx=(6, 0))
 
     # Customer search -----------------------------------------------------
 
@@ -628,13 +695,14 @@ class ProcedureAutomationApp(tk.Tk):
             str(catalog.get_value(proc, "DisplayName", "")),
             str(catalog.get_value(proc, "Description", "")),
         ]).lower()
+        matches = []
         if "bond" in text:
-            return "BOND"
+            matches.append("BOND")
         if "ut" in text or "unit trust" in text:
-            return "UT"
+            matches.append("UT")
         if "si" in text or "structured" in text:
-            return "SI"
-        return None
+            matches.append("SI")
+        return matches[0] if len(matches) == 1 else None
 
     def _refresh_account_choices(self):
         if not hasattr(self, "cmb_account"):
@@ -656,8 +724,8 @@ class ProcedureAutomationApp(tk.Tk):
             self.var_account.set(labels[0])
             self.selected_account = dict(self.account_rows[0])
         elif labels:
-            self.var_account.set(labels[0])
-            self.selected_account = dict(self.account_rows[0])
+            self.var_account.set("")
+            self.selected_account = None
 
     def _pick_account(self):
         label = self.var_account.get()
@@ -717,8 +785,7 @@ class ProcedureAutomationApp(tk.Tk):
             return
 
         manual = {k: v.get().strip() for k, v in self.manual_entries.items()}
-        client = self._client_with_selected_account()
-        client.update({k: v for k, v in manual.items() if v})
+        client = package_engine.merge_manual_values(self._client_with_selected_account(), manual)
         missing = package_engine.missing_required_fields(
             catalog.get_value(proc, "ProcedureCode"),
             client,
@@ -897,7 +964,7 @@ class ProcedureAutomationApp(tk.Tk):
         for key, var in self.builder_vars.items():
             var.set(str(catalog.get_value(proc, key, "")))
         self.var_builder_active.set(catalog.is_active(proc))
-        self.var_builder_auto_blank.set(str(catalog.get_value(proc, "AutoBlankAfterOdd", True)).strip().lower() not in {"false", "0", "no"})
+        self.var_builder_auto_blank.set(self._auto_blank_enabled_for_proc(proc))
         self.builder_items = [dict(i) for i in catalog.procedure_items_for(catalog.get_value(proc, "ProcedureCode"))]
         self._render_builder_items()
 
@@ -925,7 +992,7 @@ class ProcedureAutomationApp(tk.Tk):
         self.builder_vars["Category"].set(catalog.PROCEDURE_CATEGORIES[0])
         self.builder_vars["Version"].set("V01")
         self.var_builder_active.set(True)
-        self.var_builder_auto_blank.set(True)
+        self.var_builder_auto_blank.set(bool(self.settings.get("auto_blank_after_odd", True)))
         self.builder_items = []
         self._render_builder_items()
 
@@ -953,7 +1020,13 @@ class ProcedureAutomationApp(tk.Tk):
             remaining.append(item)
         catalog.save_procedures(self.procedures)
         catalog.save_procedure_items(remaining)
+        saved_label = catalog.procedure_label(row)
         self._load_all()
+        self.var_builder_proc.set(saved_label)
+        self.var_gen_category.set(row.get("Category", ""))
+        self._refresh_generate_procedures()
+        self.var_gen_proc.set(saved_label)
+        self._load_builder_procedure()
         self._set_status(f"Saved procedure {code}.")
 
     def _builder_add_source(self):
@@ -962,6 +1035,9 @@ class ProcedureAutomationApp(tk.Tk):
             return
         source = self._source_from_label(self.lst_available_sources.get(sel[0]))
         if not source:
+            return
+        if not catalog.is_active(source):
+            messagebox.showwarning("Inactive source form", "Activate the source form before adding it to a procedure.")
             return
         self.builder_items.append({
             "ProcedureCode": self.builder_vars["ProcedureCode"].get(),

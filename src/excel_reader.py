@@ -47,7 +47,10 @@ def _open_wb(path: Path):
 
 def _open_wb_edit(path: Path):
     try:
-        return openpyxl.load_workbook(path)
+        return openpyxl.load_workbook(
+            path,
+            keep_vba=Path(path).suffix.lower() == ".xlsm",
+        )
     except PermissionError:
         raise ExcelLockedError(
             f"Cannot write '{path.name}' — it is locked by Excel.\n"
@@ -203,10 +206,10 @@ def load_customer_records(path: Path) -> list[dict]:
         "rm_profile", "staff_profile", "default_staff",
         "leader_profile", "leaders",
         "bulk_cis_template", "history_log", "history",
-        "default_accounts",
+        "default_accounts", "accounts",
     }
     for sheet_name in wb.sheetnames:
-        if sheet_name.lower() in non_customer_sheets:
+        if normalize_header(sheet_name) in non_customer_sheets:
             continue
         ws = wb[sheet_name]
         for rec in _sheet_records_generic(ws):
@@ -395,6 +398,122 @@ def find_customer_by_cis(records: list[dict], cis: str) -> dict | None:
         if normalize_lookup_key(rec.get("cif_no", "")) == target:
             return rec
     return None
+
+
+def _cell_value_for_match(value, field: str) -> str:
+    if field in {"ic", "ic_number", "nric", "new_ic", "holder_1_ic", "holder_2_ic", "holder_3_ic"}:
+        return normalize_ic(value)
+    return normalize_lookup_key(value)
+
+
+def _sheet_context_for_customer(customer: dict, sheet_name: str) -> dict:
+    sheet_data = customer.get("_sheet_data", {}) if isinstance(customer, dict) else {}
+    context = dict(customer or {})
+    if isinstance(sheet_data, dict):
+        for key in (sheet_name, normalize_header(sheet_name), str(sheet_name).lower()):
+            bucket = sheet_data.get(key)
+            if isinstance(bucket, dict):
+                context.update(bucket)
+                break
+    return context
+
+
+def _row_matches_context(row: dict, context: dict) -> bool:
+    strong_keys = [
+        "account_number",
+        "common_name",
+        "cis",
+        "cif_no",
+        "cis_number",
+        "ic_number",
+        "ic",
+        "nric",
+        "new_ic",
+        "policy_number",
+        "policy_no",
+        "policy",
+    ]
+    for key in strong_keys:
+        if row.get(key) in ("", None) or context.get(key) in ("", None):
+            continue
+        if _cell_value_for_match(row.get(key), key) == _cell_value_for_match(context.get(key), key):
+            return True
+    for row_key, ctx_key in [
+        ("holder_1_cis", "cis"),
+        ("holder_2_cis", "cis"),
+        ("holder_3_cis", "cis"),
+        ("holder_1_ic", "ic_number"),
+        ("holder_2_ic", "ic_number"),
+        ("holder_3_ic", "ic_number"),
+    ]:
+        if row.get(row_key) in ("", None) or context.get(ctx_key) in ("", None):
+            continue
+        if _cell_value_for_match(row.get(row_key), row_key) == _cell_value_for_match(context.get(ctx_key), ctx_key):
+            return True
+    for key in ("name", "client_name", "customer_name"):
+        if row.get(key) in ("", None) or context.get(key) in ("", None):
+            continue
+        if normalize_lookup_key(row.get(key)) == normalize_lookup_key(context.get(key)):
+            return True
+    return False
+
+
+def update_customer_field(path: Path, customer: dict, sheet_name: str, field_name: str, value) -> dict:
+    """
+    Update one customer field in clients.xlsx and keep a timestamped backup.
+
+    The target row is matched by account_number/common_name first when present,
+    then CIS/IC/policy/name. This is intended for the UI Edit button beside
+    default/locked fields.
+    """
+    if not path.exists():
+        raise FileNotFoundError(path)
+    wb = _open_wb_edit(path)
+    try:
+        if sheet_name not in wb.sheetnames:
+            raise ValueError(f"Sheet '{sheet_name}' not found in {path.name}.")
+        ws = wb[sheet_name]
+        header_row = _detect_header_row(ws)
+        if not header_row:
+            raise ValueError(f"Cannot detect header row in sheet '{sheet_name}'.")
+
+        raw_headers = next(ws.iter_rows(min_row=header_row, max_row=header_row, values_only=True))
+        headers = [normalize_header(v) if v not in (None, "") else f"col_{i}" for i, v in enumerate(raw_headers)]
+        field_key = normalize_header(field_name)
+        if field_key not in headers:
+            raise ValueError(f"Column '{field_name}' not found in sheet '{sheet_name}'.")
+        target_col = headers.index(field_key) + 1
+
+        context = _sheet_context_for_customer(customer, sheet_name)
+        target_row = None
+        for row_idx in range(header_row + 1, ws.max_row + 1):
+            row = {}
+            for col_idx, key in enumerate(headers, 1):
+                cell_value = ws.cell(row=row_idx, column=col_idx).value
+                row[key] = "" if cell_value is None else cell_value
+            if _row_matches_context(_canonicalize_record(row), context):
+                target_row = row_idx
+                break
+        if target_row is None:
+            raise ValueError(f"Cannot find matching customer row in sheet '{sheet_name}'.")
+
+        backup_dir = path.parent / "backups"
+        backup_dir.mkdir(parents=True, exist_ok=True)
+        stamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+        backup_path = backup_dir / f"{path.stem}_{stamp}{path.suffix}"
+        if not backup_path.exists():
+            shutil.copy(path, backup_path)
+
+        ws.cell(row=target_row, column=target_col, value=value)
+        wb.save(path)
+        return {
+            "sheet": sheet_name,
+            "row": target_row,
+            "column": target_col,
+            "backup_path": str(backup_path),
+        }
+    finally:
+        wb.close()
 
 
 def read_cis_list(path: Path) -> list[str]:

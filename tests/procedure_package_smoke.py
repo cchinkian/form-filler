@@ -323,7 +323,7 @@ def test_workbook_schema_defaults_and_accounts() -> None:
         clients.title = "default_clients"
         clients.append(["*cis", "*name", "*ic_number", "phone"])
         clients.append(["CIS001", "Avery Tan", "900101101234", "012"])
-        accounts = wb.create_sheet("default_accounts")
+        accounts = wb.create_sheet("Default Accounts")
         accounts.append([
             "common_name", "account_type", "account_number",
             "holder_1_name", "holder_1_cis", "holder_1_ic",
@@ -346,10 +346,80 @@ def test_workbook_schema_defaults_and_accounts() -> None:
 
         records = excel_reader.load_customer_records(workbook_path)
         accounts = excel_reader.load_accounts(workbook_path)
+        assert len(records) == 1
         rows = excel_reader.accounts_for_customer(accounts, records[0], "UT")
         assert len(rows) == 1
         assert rows[0]["common_name"] == "Avery UT Wife"
         assert "Avery UT Wife" in rows[0]["_label"]
+
+        result = excel_reader.update_customer_field(
+            workbook_path,
+            records[0],
+            "default_clients",
+            "phone",
+            "0199999999",
+        )
+        assert result["sheet"] == "default_clients"
+        refreshed = excel_reader.load_customer_records(workbook_path)
+        assert refreshed[0]["phone"] == "0199999999"
+
+
+def test_sheet_aware_fields_and_manual_values() -> None:
+    source_forms = {
+        "SF_INV": {"SourceFormCode": "SF_INV", "MappingKey": "investment", "Active": True},
+        "SF_INS": {"SourceFormCode": "SF_INS", "MappingKey": "insurance", "Active": True},
+    }
+    items = [
+        {"ProcedureCode": "PROC", "StepNo": 1, "ItemType": "SourceForm", "SourceFormCode": "SF_INV"},
+        {"ProcedureCode": "PROC", "StepNo": 2, "ItemType": "SourceForm", "SourceFormCode": "SF_INS"},
+    ]
+    forms = {
+        "investment": {
+            "fields": [{
+                "name": "amount",
+                "source": "data",
+                "excel_sheet": "default_investment",
+                "data_key": "amount",
+                "required": True,
+            }]
+        },
+        "insurance": {
+            "fields": [{
+                "name": "amount",
+                "source": "data",
+                "excel_sheet": "default_insurance",
+                "data_key": "amount",
+                "required": True,
+            }]
+        },
+    }
+    client = {
+        "name": "Avery Tan",
+        "_sheet_data": {
+            "default_investment": {"amount": "1000"},
+            "default_insurance": {"amount": ""},
+        },
+    }
+
+    fields = package_engine.data_fields_for_procedure("PROC", forms, source_forms, items, include_common=True)
+    assert {f["id"] for f in fields} == {"default_investment::amount", "default_insurance::amount"}
+    missing = package_engine.missing_required_fields("PROC", client, forms, source_forms, items)
+    assert [f["id"] for f in missing] == ["default_insurance::amount"]
+
+    merged = package_engine.merge_manual_values(client, {"default_insurance::amount": "2000"})
+    missing_after_manual = package_engine.missing_required_fields("PROC", merged, forms, source_forms, items)
+    assert missing_after_manual == []
+
+    both_missing = {
+        "name": "Avery Tan",
+        "_sheet_data": {
+            "default_investment": {"amount": ""},
+            "default_insurance": {"amount": ""},
+        },
+    }
+    merged_one_sheet = package_engine.merge_manual_values(both_missing, {"default_insurance::amount": "2000"})
+    still_missing = package_engine.missing_required_fields("PROC", merged_one_sheet, forms, source_forms, items)
+    assert [f["id"] for f in still_missing] == ["default_investment::amount"]
 
 
 def test_auto_blank_after_odd_pages() -> None:
@@ -385,12 +455,42 @@ def test_auto_blank_after_odd_pages() -> None:
         assert (reader.pages[3].extract_text() or "").strip() == ""
 
 
+def test_auto_blank_does_not_double_insert_before_manual_blank() -> None:
+    with tempfile.TemporaryDirectory() as td:
+        root = Path(td)
+        forms_root = root / "forms"
+        output_root = root / "output"
+        _make_pdf(forms_root / "one.pdf", "ONE_PAGE")
+
+        result = package_engine.generate_package(
+            procedure={"ProcedureCode": "PROC_AUTO_MANUAL", "DisplayName": "Auto Manual", "Active": True, "AutoBlankAfterOdd": True},
+            source_forms={
+                "SF_ONE": {"SourceFormCode": "SF_ONE", "PDFFilePath": "one.pdf", "MappingKey": "one", "Active": True},
+            },
+            procedure_items=[
+                {"ProcedureCode": "PROC_AUTO_MANUAL", "StepNo": 1, "ItemType": "SourceForm", "SourceFormCode": "SF_ONE"},
+                {"ProcedureCode": "PROC_AUTO_MANUAL", "StepNo": 2, "ItemType": "BlankPage", "BlankPageCount": 1},
+            ],
+            forms_config={"one": {"fields": []}},
+            client={"name": "Avery Tan"},
+            settings={"forms_folder": str(forms_root), "default_font_size": 10},
+            output_root=output_root,
+            session={"date": "19/05/2026"},
+        )
+
+        reader = pypdf.PdfReader(str(result["output_path"]))
+        assert len(reader.pages) == 2
+        assert (reader.pages[1].extract_text() or "").strip() == ""
+
+
 def main() -> None:
     test_package_engine_generates_ordered_combined_pdf()
     test_load_staff_profile_from_excel_table()
     test_blank_staff_profile_falls_back_to_rm_profile()
     test_workbook_schema_defaults_and_accounts()
+    test_sheet_aware_fields_and_manual_values()
     test_auto_blank_after_odd_pages()
+    test_auto_blank_does_not_double_insert_before_manual_blank()
     print("OK: procedure package smoke")
 
 

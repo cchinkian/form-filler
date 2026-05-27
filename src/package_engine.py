@@ -81,6 +81,68 @@ def _expand_fields(form_config: dict, shared: dict) -> list[dict]:
     return fields
 
 
+def _normalize_sheet_key(raw) -> str:
+    return re.sub(r"[^a-z0-9]+", "_", str(raw or "").strip().lower()).strip("_")
+
+
+def field_identity(field: dict) -> str:
+    key = str(field.get("key") or "").strip()
+    sheet = str(field.get("excel_sheet") or "").strip()
+    return f"{sheet}::{key}" if sheet else key
+
+
+def split_field_identity(identity: str) -> tuple[str, str]:
+    text = str(identity or "")
+    if "::" in text:
+        sheet, key = text.split("::", 1)
+        return sheet, key
+    return "", text
+
+
+def field_value(client: dict, field: dict):
+    key = field.get("key")
+    sheet = field.get("excel_sheet") or ""
+    if not key:
+        return ""
+    sheet_data = client.get("_sheet_data", {})
+    if sheet and isinstance(sheet_data, dict):
+        found_sheet = False
+        for candidate in (sheet, _normalize_sheet_key(sheet), str(sheet).lower()):
+            bucket = sheet_data.get(candidate, {})
+            if isinstance(bucket, dict):
+                found_sheet = True
+                if bucket.get(key) not in ("", None):
+                    return bucket.get(key)
+        if found_sheet:
+            return ""
+    return client.get(key, "")
+
+
+def merge_manual_values(client: dict, manual_values: dict | None) -> dict:
+    merged = dict(client or {})
+    sheet_data = {
+        k: dict(v)
+        for k, v in (merged.get("_sheet_data", {}) or {}).items()
+        if isinstance(v, dict)
+    }
+    for identity, value in (manual_values or {}).items():
+        if value in ("", None):
+            continue
+        sheet, key = split_field_identity(identity)
+        if not key:
+            continue
+        if sheet:
+            bucket = sheet_data.setdefault(sheet, {})
+            bucket[key] = value
+            normalized = _normalize_sheet_key(sheet)
+            if normalized and normalized != sheet:
+                sheet_data.setdefault(normalized, bucket)
+        merged[key] = value
+    if sheet_data:
+        merged["_sheet_data"] = sheet_data
+    return merged
+
+
 def data_fields_for_procedure(
     procedure_code: str,
     forms_config: dict,
@@ -108,15 +170,18 @@ def data_fields_for_procedure(
                 continue
             if not include_common and key in COMMON_DATA_FIELDS:
                 continue
-            if key in seen:
+            sheet = field.get("excel_sheet") or field.get("ExcelSheet") or ""
+            identity = f"{sheet}::{key}" if sheet else key
+            if identity in seen:
                 continue
-            seen.add(key)
+            seen.add(identity)
             rows.append({
+                "id": identity,
                 "key": key,
                 "label": field.get("DisplayLabel") or key.replace("_", " ").title(),
                 "required": bool(field.get("required") or field.get("Required")),
                 "source_form": source_code,
-                "excel_sheet": field.get("excel_sheet") or field.get("ExcelSheet") or "",
+                "excel_sheet": sheet,
             })
     return rows
 
@@ -134,7 +199,7 @@ def missing_required_fields(
     ):
         if not field["required"]:
             continue
-        if client.get(field["key"]) in ("", None):
+        if field_value(client, field) in ("", None):
             missing.append(field)
     return missing
 
@@ -201,8 +266,7 @@ def generate_package(
     session["rm_code"] = rm_code
     session.setdefault("date", datetime.date.today().strftime("%d/%m/%Y"))
 
-    fill_data = dict(client)
-    fill_data.update({k: v for k, v in manual_values.items() if v not in ("", None)})
+    fill_data = merge_manual_values(client, manual_values)
     fill_data.setdefault("date", session["date"])
     fill_data.setdefault("rm_branch", branch)
     fill_data.setdefault("branch_code", branch)
@@ -210,7 +274,11 @@ def generate_package(
     fill_data.setdefault("rm_code", rm_code)
 
     procedure_code = catalog.get_value(procedure, "ProcedureCode")
-    auto_blank_after_odd = _truthy(catalog.get_value(procedure, "AutoBlankAfterOdd", settings.get("auto_blank_after_odd", True)))
+    proc_auto_blank = catalog.get_value(procedure, "AutoBlankAfterOdd", None)
+    if proc_auto_blank in ("", None):
+        auto_blank_after_odd = _truthy(settings.get("auto_blank_after_odd", True))
+    else:
+        auto_blank_after_odd = _truthy(proc_auto_blank)
     output_path = output_path_for_client(
         output_root, fill_data, procedure, session,
         bulk_root=bulk_root, client_folder=client_folder
@@ -229,9 +297,12 @@ def generate_package(
 
     with tempfile.TemporaryDirectory() as td:
         tmp_dir = Path(td)
-        for item in sorted(procedure_items, key=lambda r: int(catalog.get_value(r, "StepNo", 0) or 0)):
-            if catalog.get_value(item, "ProcedureCode") != procedure_code:
-                continue
+        sorted_items = sorted(procedure_items, key=lambda r: int(catalog.get_value(r, "StepNo", 0) or 0))
+        proc_items = [
+            item for item in sorted_items
+            if catalog.get_value(item, "ProcedureCode") == procedure_code
+        ]
+        for idx, item in enumerate(proc_items):
             item_type = catalog.get_value(item, "ItemType")
             if item_type == "BlankPage":
                 _add_blank_pages(writer, int(catalog.get_value(item, "BlankPageCount", 1) or 1))
@@ -267,9 +338,11 @@ def generate_package(
             source_count += 1
 
             extra_blank = int(catalog.get_value(item, "BlankPageCount", 0) or 0)
+            next_item = proc_items[idx + 1] if idx + 1 < len(proc_items) else {}
+            next_is_manual_blank = catalog.get_value(next_item, "ItemType") == "BlankPage"
             if extra_blank:
                 _add_blank_pages(writer, extra_blank, last_width, last_height)
-            elif auto_blank_after_odd and page_count % 2 == 1:
+            elif auto_blank_after_odd and page_count % 2 == 1 and not next_is_manual_blank:
                 _add_blank_pages(writer, 1, last_width, last_height)
 
     if source_count == 0 and not writer.pages:

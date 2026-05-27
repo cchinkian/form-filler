@@ -53,6 +53,7 @@ class CoordPickerApp(tk.Tk):
         self.geometry("1050x700")
         self.resizable(True, True)
         self.minsize(800, 560)
+        self._set_window_icon()
 
         self._doc        = None
         self._page_num   = 1
@@ -98,6 +99,21 @@ class CoordPickerApp(tk.Tk):
                 "PyMuPDF and Pillow are required.\n"
                 "pip install PyMuPDF Pillow"
             )
+
+    def _set_window_icon(self):
+        bases = []
+        if getattr(sys, "frozen", False):
+            bases.append(Path(getattr(sys, "_MEIPASS", Path(sys.executable).parent)))
+            bases.append(Path(sys.executable).parent)
+        bases.append(Path(__file__).resolve().parents[1])
+        for base in bases:
+            icon = base / "assets" / "app.ico"
+            if icon.exists():
+                try:
+                    self.iconbitmap(default=str(icon))
+                    return
+                except tk.TclError:
+                    continue
 
     # ── UI construction ───────────────────────────────────────────────────────
 
@@ -364,6 +380,28 @@ class CoordPickerApp(tk.Tk):
         except Exception:
             pass
 
+    def _load_existing_form_mapping(self, fid: str) -> bool:
+        """Load an existing mapping by MappingKey/SourceFormCode before editing."""
+        if not fid:
+            return False
+        try:
+            forms = config_loader.load_forms()
+            fcfg = forms.get(fid)
+            if not isinstance(fcfg, dict):
+                return False
+            self._form_id.set(fid)
+            if fcfg.get("name"):
+                self._form_name_var.set(fcfg.get("name", ""))
+            if fcfg.get("template_subfolder"):
+                self._subfolder.set(fcfg.get("template_subfolder", ""))
+            self._fields = list(fcfg.get("fields", []))
+            self._selected_idx = None
+            self._refresh_list()
+            self._status(f"Loaded existing mapping for '{fid}' ({len(self._fields)} fields).")
+            return True
+        except Exception:
+            return False
+
     # ── PDF ───────────────────────────────────────────────────────────────────
 
     def _open_pdf(self):
@@ -403,6 +441,10 @@ class CoordPickerApp(tk.Tk):
             self._form_name_var.set(args.display_name)
         if args.subfolder:
             self._subfolder.set(args.subfolder)
+        if args.form_id:
+            self._load_existing_form_mapping(args.form_id)
+            if args.display_name and not self._form_name_var.get().strip():
+                self._form_name_var.set(args.display_name)
         if args.pdf:
             pdf_path = Path(args.pdf)
             if pdf_path.exists():

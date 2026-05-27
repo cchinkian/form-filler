@@ -19,10 +19,10 @@ jobs:
         run: pip install -r requirements.txt
 
       - name: Build FormFiller.exe
-        run: pyinstaller --onefile --windowed --name FormFiller --collect-all tkcalendar --collect-all babel --hidden-import babel.numbers src/main_app.py
+        run: pyinstaller --onefile --windowed --name FormFiller --icon assets/app.ico --add-data "assets/app.ico;assets" --collect-all tkcalendar --collect-all babel --hidden-import babel.numbers src/main_app.py
 
       - name: Build CoordPicker.exe
-        run: pyinstaller --onefile --windowed --name CoordPicker src/coord_picker.py
+        run: pyinstaller --onefile --windowed --name CoordPicker --icon assets/app.ico --add-data "assets/app.ico;assets" src/coord_picker.py
 
       - name: Stage portable bundle
         shell: cmd
