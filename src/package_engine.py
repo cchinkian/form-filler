@@ -176,8 +176,6 @@ def generate_package(
     branch = (
         session.get("rm_branch")
         or settings.get("default_branch")
-        or client.get("branch_code")
-        or client.get("branch")
         or ""
     )
     rm_code = (

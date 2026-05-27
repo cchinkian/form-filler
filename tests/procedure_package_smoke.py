@@ -240,7 +240,7 @@ def test_package_engine_generates_ordered_combined_pdf() -> None:
         assert "25000" in page_texts[0]
         assert "19/05/2026" in page_texts[0]
         assert "CK Staff" in page_texts[0]
-        assert "KLG" in page_texts[0]
+        assert "KLG" not in page_texts[0]
         assert page_texts[1].strip() == ""
         assert "SECOND_SOURCE_TEMPLATE" in page_texts[2]
         assert "900101101234" in page_texts[2]
