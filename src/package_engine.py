@@ -27,6 +27,8 @@ COMMON_DATA_FIELDS = {
     "address", "address_line1", "address_line2", "city", "state", "postcode",
     "dob", "occupation",
     "branch", "branch_code", "rm_branch", "date",
+    "staff_name", "staff_ic", "staff_id", "fimm_id", "ippc_id",
+    "staff_position", "staff_rm_code", "rm_code",
 }
 
 
@@ -178,7 +180,15 @@ def generate_package(
         or client.get("branch")
         or ""
     )
+    rm_code = (
+        session.get("staff_rm_code")
+        or session.get("rm_code")
+        or settings.get("default_rm_code")
+        or ""
+    )
     session["rm_branch"] = branch
+    session["staff_rm_code"] = rm_code
+    session["rm_code"] = rm_code
     session.setdefault("date", datetime.date.today().strftime("%d/%m/%Y"))
 
     fill_data = dict(client)
@@ -186,6 +196,8 @@ def generate_package(
     fill_data.setdefault("date", session["date"])
     fill_data.setdefault("rm_branch", branch)
     fill_data.setdefault("branch_code", branch)
+    fill_data.setdefault("staff_rm_code", rm_code)
+    fill_data.setdefault("rm_code", rm_code)
 
     procedure_code = catalog.get_value(procedure, "ProcedureCode")
     output_path = output_path_for_client(
@@ -201,6 +213,7 @@ def generate_package(
         "_shared_fields": forms_config.get("_shared_fields", {}),
         "_session": session,
         "_rm_profile": settings.get("_rm_profile", {}),
+        "_staff_profile": settings.get("_staff_profile", settings.get("_rm_profile", {})),
     }
 
     with tempfile.TemporaryDirectory() as td:

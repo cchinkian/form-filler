@@ -3,7 +3,8 @@ PDF engine — coordinate-based text overlay for flat/scanned PDF forms.
 
 Field source types (per-field in forms.json):
   data       — from Excel column (Master or batch sheet)
-  rm_profile — from Excel RM_Profile sheet (rm_name, staff_id, fimm_id, ippc_id)
+  staff_profile — from Excel Staff_Profile sheet (staff_name, staff_id, fimm_id, etc.)
+  rm_profile — legacy alias for staff_profile
   session    — from runtime context (rm_branch, date) picked in top bar
   settings   — from settings.json (legacy; kept for backward compat)
   fixed      — hardcoded in forms.json value (currency, bank name, etc.)
@@ -117,13 +118,14 @@ def _resolve(field: dict, client: dict, settings: dict) -> str:
     if "ExcelColumnOrField" in field and "name" not in field:
         field = {**field, "name": field["ExcelColumnOrField"]}
     rm_profile = settings.get("_rm_profile", {})
+    staff_profile = settings.get("_staff_profile", rm_profile)
     session = settings.get("_session", {})
 
     if source == "fixed":
         raw = field.get("value", field.get("DefaultValue", ""))
-    elif source == "rm_profile":
+    elif source in {"staff_profile", "rm_profile"}:
         key = field.get("profile_key") or field.get("name", "")
-        raw = rm_profile.get(key, field.get("value", field.get("DefaultValue", "")))
+        raw = staff_profile.get(key, rm_profile.get(key, field.get("value", field.get("DefaultValue", ""))))
     elif source == "session":
         key = field.get("session_key") or field.get("name", "")
         raw = session.get(key, field.get("value", field.get("DefaultValue", "")))
@@ -273,19 +275,22 @@ def fill_bundle(application: dict, forms_config: dict,
                 log_path: Path | None = None,
                 test_mode: bool = False,
                 rm_profile: dict | None = None,
+                staff_profile: dict | None = None,
                 session: dict | None = None) -> tuple[list[Path], list[str]]:
     """
     Fill all forms in a bundle for one client.
     Returns (output_paths, warning_messages).
-    rm_profile: dict from RM_Profile Excel sheet (rm_name, staff_id, fimm_id, ippc_id, branches)
+    rm_profile: dict from legacy RM_Profile Excel sheet.
+    staff_profile: dict from Staff_Profile Excel sheet (preferred).
     session:    dict of runtime picks (rm_branch, date) — set by top bar dropdowns.
     """
     today_safe  = datetime.date.today().strftime("%Y%m%d")
     name_safe   = client.get("name", "Client").replace(" ", "_").replace("/", "-")
     app_id      = application.get("id", "unknown")
     rm_profile  = rm_profile or {}
+    staff_profile = staff_profile or settings.get("_staff_profile") or rm_profile
     session     = session or {}
-    rm_staff_id = rm_profile.get("staff_id") or settings.get("rm_staff_id", "")
+    rm_staff_id = staff_profile.get("staff_id") or rm_profile.get("staff_id") or settings.get("rm_staff_id", "")
     ic          = client.get("ic_number", "")
 
     # Load shared fields + RM profile + session into one dict consumed by _resolve
@@ -293,6 +298,7 @@ def fill_bundle(application: dict, forms_config: dict,
     settings_with_shared = {**settings,
                             "_shared_fields": shared,
                             "_rm_profile":   rm_profile,
+                            "_staff_profile": staff_profile,
                             "_session":      session}
 
     results, warnings = [], []

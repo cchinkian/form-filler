@@ -44,6 +44,7 @@ class ProcedureAutomationApp(tk.Tk):
         self.procedure_by_code: dict[str, dict] = {}
         self.source_by_code: dict[str, dict] = {}
         self.customers: list[dict] = []
+        self.staff_profile: dict = {}
         self.rm_profile: dict = {}
 
         self.selected_customer: dict | None = None
@@ -74,9 +75,14 @@ class ProcedureAutomationApp(tk.Tk):
 
         session = ttk.Frame(self, padding=(10, 0, 10, 8))
         session.pack(fill=tk.X)
+        ttk.Label(session, text="RM Code").pack(side=tk.LEFT)
+        self.var_rm_code = tk.StringVar()
+        self.cmb_rm_code = ttk.Combobox(session, textvariable=self.var_rm_code, width=14, state="normal")
+        self.cmb_rm_code.pack(side=tk.LEFT, padx=(4, 14))
         ttk.Label(session, text="Branch").pack(side=tk.LEFT)
         self.var_branch = tk.StringVar()
-        ttk.Entry(session, textvariable=self.var_branch, width=18).pack(side=tk.LEFT, padx=(4, 14))
+        self.cmb_branch = ttk.Combobox(session, textvariable=self.var_branch, width=18, state="normal")
+        self.cmb_branch.pack(side=tk.LEFT, padx=(4, 14))
         ttk.Label(session, text="Date").pack(side=tk.LEFT)
         self.var_date = tk.StringVar(value=date.today().strftime("%d/%m/%Y"))
         ttk.Entry(session, textvariable=self.var_date, width=14).pack(side=tk.LEFT, padx=(4, 0))
@@ -147,8 +153,12 @@ class ProcedureAutomationApp(tk.Tk):
         session_box.pack(fill=tk.X, pady=(0, 8))
         row = ttk.Frame(session_box, padding=6)
         row.pack(fill=tk.X)
-        ttk.Label(row, text="Branch", width=LABEL_W).pack(side=tk.LEFT)
-        ttk.Entry(row, textvariable=self.var_branch, width=18).pack(side=tk.LEFT)
+        ttk.Label(row, text="RM Code", width=LABEL_W).pack(side=tk.LEFT)
+        self.cmb_gen_rm_code = ttk.Combobox(row, textvariable=self.var_rm_code, width=16, state="normal")
+        self.cmb_gen_rm_code.pack(side=tk.LEFT)
+        ttk.Label(row, text="Branch").pack(side=tk.LEFT, padx=(12, 4))
+        self.cmb_gen_branch = ttk.Combobox(row, textvariable=self.var_branch, width=18, state="normal")
+        self.cmb_gen_branch.pack(side=tk.LEFT)
         ttk.Label(row, text="Date").pack(side=tk.LEFT, padx=(12, 4))
         ttk.Entry(row, textvariable=self.var_date, width=14).pack(side=tk.LEFT)
 
@@ -321,8 +331,10 @@ class ProcedureAutomationApp(tk.Tk):
             self.source_by_code = catalog.source_form_map()
             workbook = config_loader.customer_workbook_path(self.settings)
             self.customers = excel_reader.load_customer_records(workbook)
-            self.rm_profile = excel_reader.load_rm_profile(workbook)
-            self.settings["_rm_profile"] = self.rm_profile
+            self.staff_profile = excel_reader.load_staff_profile(workbook)
+            self.rm_profile = self.staff_profile
+            self.settings["_staff_profile"] = self.staff_profile
+            self.settings["_rm_profile"] = self.staff_profile
         except ExcelLockedError as e:
             messagebox.showerror("Excel is open", str(e))
             return
@@ -359,11 +371,23 @@ class ProcedureAutomationApp(tk.Tk):
         self._refresh_builder_procedures()
         self._refresh_source_forms()
         self._refresh_paths()
-        self.var_branch.set(self.settings.get("default_branch", "") or self._first_branch())
+        rm_codes = self.staff_profile.get("staff_rm_codes") or self.staff_profile.get("rm_codes") or []
+        branches = self.staff_profile.get("staff_branches") or self.staff_profile.get("branches") or []
+        for cmb in [self.cmb_rm_code, getattr(self, "cmb_gen_rm_code", None)]:
+            if cmb:
+                cmb["values"] = rm_codes
+        for cmb in [self.cmb_branch, getattr(self, "cmb_gen_branch", None)]:
+            if cmb:
+                cmb["values"] = [""] + branches
+        self.var_rm_code.set(self.settings.get("default_rm_code", "") or self._first_rm_code())
+        self.var_branch.set(self.settings.get("default_branch", ""))
 
-    def _first_branch(self) -> str:
-        branches = self.rm_profile.get("branches") or []
-        return branches[0] if branches else ""
+    def _first_rm_code(self) -> str:
+        codes = self.staff_profile.get("staff_rm_codes") or self.staff_profile.get("rm_codes") or []
+        return codes[0] if codes else ""
+
+    def _staff_name(self) -> str:
+        return self.staff_profile.get("staff_name") or self.staff_profile.get("rm_name") or ""
 
     # Procedure helpers ---------------------------------------------------
 
@@ -488,6 +512,8 @@ class ProcedureAutomationApp(tk.Tk):
 
     def _session_context(self) -> dict:
         return {
+            "staff_rm_code": self.var_rm_code.get().strip(),
+            "rm_code": self.var_rm_code.get().strip(),
             "rm_branch": self.var_branch.get().strip(),
             "date": self._normalize_date(self.var_date.get().strip()),
         }
@@ -549,7 +575,7 @@ class ProcedureAutomationApp(tk.Tk):
             try:
                 excel_reader.append_history_rows(
                     config_loader.history_log_path(self.settings),
-                    [package_engine.error_history_row(client, proc, "Failed", str(e), self.rm_profile.get("rm_name", ""))],
+                    [package_engine.error_history_row(client, proc, "Failed", str(e), self._staff_name())],
                 )
             except ExcelLockedError:
                 pass
@@ -560,7 +586,7 @@ class ProcedureAutomationApp(tk.Tk):
         try:
             excel_reader.append_history_rows(
                 config_loader.history_log_path(self.settings),
-                [package_engine.history_row(result, generated_by=self.rm_profile.get("rm_name", ""))],
+                [package_engine.history_row(result, generated_by=self._staff_name())],
             )
         except ExcelLockedError:
             history_warning = "\n\nHistoryLog.xlsx is open, so this generation was not logged."
@@ -639,7 +665,7 @@ class ProcedureAutomationApp(tk.Tk):
             if row["status"] != "Matched":
                 failed += 1
                 history.append(package_engine.error_history_row(
-                    {"cis": row["cis"]}, proc, row["status"], row["status"], self.rm_profile.get("rm_name", "")
+                    {"cis": row["cis"]}, proc, row["status"], row["status"], self._staff_name()
                 ))
                 continue
             client = row["customer"]
@@ -656,14 +682,14 @@ class ProcedureAutomationApp(tk.Tk):
                     bulk_root=batch_root,
                     client_folder=bool(self.settings.get("bulk_create_client_folders", True)),
                 )
-                history.append(package_engine.history_row(result, self.rm_profile.get("rm_name", "")))
+                history.append(package_engine.history_row(result, self._staff_name()))
                 if result["status"] == "Success":
                     saved += 1
                 else:
                     review += 1
             except Exception as e:
                 failed += 1
-                history.append(package_engine.error_history_row(client, proc, "Failed", str(e), self.rm_profile.get("rm_name", "")))
+                history.append(package_engine.error_history_row(client, proc, "Failed", str(e), self._staff_name()))
 
         try:
             excel_reader.append_history_rows(config_loader.history_log_path(self.settings), history)
@@ -896,6 +922,7 @@ class ProcedureAutomationApp(tk.Tk):
             ("Source form folder", "forms_folder", "dir"),
             ("Output folder", "output_folder", "dir"),
             ("History log", "history_log_path", "file"),
+            ("Default RM code", "default_rm_code", ""),
             ("Default branch", "default_branch", ""),
             ("Default font", "default_font", ""),
             ("Default font size", "default_font_size", ""),

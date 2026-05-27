@@ -28,7 +28,7 @@ except ImportError:
 
 ZOOM = 1.5  # display scale factor (1.5 = 150% of actual PDF size)
 
-SOURCE_TYPES  = ["data", "session", "rm_profile", "fixed", "auto", "settings"]
+SOURCE_TYPES  = ["data", "session", "staff_profile", "fixed", "auto", "settings", "rm_profile"]
 FORMAT_OPTS   = ["", "ic_dashed", "currency_myr", "currency_no_symbol",
                  "date_dmy", "date_dmy_long", "phone_dashed",
                  "uppercase", "integer"]

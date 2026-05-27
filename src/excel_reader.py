@@ -184,8 +184,9 @@ def load_customer_records(path: Path) -> list[dict]:
         return []
     wb = _open_wb(path)
     merged: dict[str, dict] = {}
+    non_customer_sheets = {"rm_profile", "staff_profile", "leader_profile", "leaders"}
     for sheet_name in wb.sheetnames:
-        if sheet_name.lower() == "rm_profile":
+        if sheet_name.lower() in non_customer_sheets:
             continue
         ws = wb[sheet_name]
         for rec in _sheet_records_generic(ws):
@@ -259,6 +260,139 @@ def read_cis_list(path: Path) -> list[str]:
         return [v for v in vals if v]
     text = path.read_text(encoding="utf-8-sig")
     return [v.strip() for v in re.split(r"[\n,;]+", text) if v.strip()]
+
+
+# ── Staff profile ───────────────────────────────────────────────────────────
+
+_STAFF_PROFILE_KEYS = {
+    "staff_name",
+    "staff_ic",
+    "staff_id",
+    "fimm_id",
+    "ippc_id",
+    "staff_position",
+    "position",
+    "staff_rm_codes",
+    "staff_branches",
+    # Backward-compatible aliases from older RM_Profile sheet.
+    "rm_name",
+    "rm_ic",
+    "rm_staff_id",
+    "rm_code",
+    "rm_codes",
+    "branches",
+}
+
+
+def _split_csv(value) -> list[str]:
+    return [v.strip() for v in str(value or "").split(",") if v.strip()]
+
+
+def _profile_value(value) -> str:
+    if value is None:
+        return ""
+    if isinstance(value, float) and value.is_integer():
+        return str(int(value))
+    return str(value).strip()
+
+
+def _load_key_value_sheet(wb, sheet_name: str) -> dict:
+    if sheet_name not in wb.sheetnames:
+        return {}
+    ws = wb[sheet_name]
+    out = {}
+    for row in ws.iter_rows(values_only=True):
+        if not row or row[0] in (None, ""):
+            continue
+        key = normalize_header(row[0])
+        if key in {"field", "key"}:
+            continue
+        out[key] = _profile_value(row[1] if len(row) >= 2 else "")
+    return out
+
+
+def _load_profile_sheet(wb, sheet_name: str) -> dict:
+    if sheet_name not in wb.sheetnames:
+        return {}
+    ws = wb[sheet_name]
+    rows = [
+        tuple(cell for cell in row)
+        for row in ws.iter_rows(values_only=True)
+        if any(cell not in (None, "") for cell in row)
+    ]
+    if not rows:
+        return {}
+
+    headers = [normalize_header(cell) for cell in rows[0]]
+    recognized = [h for h in headers if h in _STAFF_PROFILE_KEYS]
+    if len(recognized) >= 2:
+        for row in rows[1:]:
+            values = {}
+            for idx, header in enumerate(headers):
+                if header in _STAFF_PROFILE_KEYS:
+                    values[header] = _profile_value(row[idx] if idx < len(row) else "")
+            if any(values.values()):
+                return values
+
+    values = {
+        key: value
+        for key, value in _load_key_value_sheet(wb, sheet_name).items()
+        if key in _STAFF_PROFILE_KEYS
+    }
+    return values if any(values.values()) else {}
+
+
+def load_staff_profile(path: Path) -> dict:
+    """
+    Load default staff information from Staff_Profile.
+
+    Backward-compatible: if Staff_Profile is absent, the older RM_Profile sheet
+    is accepted. Returned aliases make mappings forgiving:
+    staff_name/rm_name, staff_id/rm_staff_id, staff_rm_codes/rm_codes, etc.
+    """
+    profile = {k: "" for k in _STAFF_PROFILE_KEYS}
+    profile["staff_rm_codes"] = []
+    profile["staff_branches"] = []
+    profile["rm_codes"] = []
+    profile["branches"] = []
+    if not path.exists():
+        return profile
+
+    wb = _open_wb(path)
+    raw = _load_profile_sheet(wb, "Staff_Profile")
+    if not raw:
+        raw = _load_profile_sheet(wb, "RM_Profile")
+    wb.close()
+
+    for key, value in raw.items():
+        if key in profile:
+            profile[key] = value
+
+    # Normalize common aliases.
+    profile["staff_name"] = profile.get("staff_name") or profile.get("rm_name", "")
+    profile["rm_name"] = profile.get("rm_name") or profile.get("staff_name", "")
+    profile["staff_ic"] = profile.get("staff_ic") or profile.get("rm_ic", "")
+    profile["staff_id"] = profile.get("staff_id") or profile.get("rm_staff_id", "")
+    profile["rm_staff_id"] = profile.get("rm_staff_id") or profile.get("staff_id", "")
+    profile["staff_position"] = profile.get("staff_position") or profile.get("position", "")
+
+    rm_codes = (
+        profile.get("staff_rm_codes")
+        or profile.get("rm_codes")
+        or profile.get("rm_code")
+        or ""
+    )
+    branches = profile.get("staff_branches") or profile.get("branches") or ""
+    profile["staff_rm_codes"] = _split_csv(rm_codes)
+    profile["rm_codes"] = profile["staff_rm_codes"]
+    profile["staff_branches"] = _split_csv(branches)
+    profile["branches"] = profile["staff_branches"]
+    return profile
+
+
+def load_rm_profile(path: Path) -> dict:
+    """Backward-compatible alias used by older callers."""
+    return load_staff_profile(path)
 
 
 HISTORY_COLUMNS = [
@@ -381,45 +515,3 @@ def sheet_names(path: Path) -> list[str]:
     names = wb.sheetnames
     wb.close()
     return names
-
-
-# ── RM profile ────────────────────────────────────────────────────────────────
-
-_RM_PROFILE_KEYS = {"rm_name", "staff_id", "fimm_id", "ippc_id", "branches"}
-
-
-def load_rm_profile(path: Path) -> dict:
-    """
-    Read RM_Profile sheet (key-value: column A=field, column B=value).
-    Returns {rm_name, staff_id, fimm_id, ippc_id, branches: list[str]}.
-    Missing sheet → all empty. Missing keys → empty string / empty list.
-    'branches' string is split on commas and trimmed.
-    """
-    profile = {k: "" for k in _RM_PROFILE_KEYS}
-    profile["branches"] = []
-    if not path.exists():
-        return profile
-
-    wb = _open_wb(path)
-    if "RM_Profile" not in wb.sheetnames:
-        wb.close()
-        return profile
-
-    ws = wb["RM_Profile"]
-    for row in ws.iter_rows(values_only=True):
-        if not row or row[0] is None:
-            continue
-        key = str(row[0]).strip().lower().replace(" ", "_")
-        if key not in _RM_PROFILE_KEYS:
-            continue
-        val = "" if len(row) < 2 or row[1] is None else row[1]
-        if isinstance(val, float) and val.is_integer():
-            val = str(int(val))
-        else:
-            val = str(val).strip()
-        if key == "branches":
-            profile["branches"] = [b.strip() for b in val.split(",") if b.strip()]
-        else:
-            profile[key] = val
-    wb.close()
-    return profile

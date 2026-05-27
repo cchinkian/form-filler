@@ -71,10 +71,14 @@ The shipped template contains:
 - `Investor Information`
 - `ProcedureSpecificData`
 - `InsuranceData`
-- `RM_Profile`
+- `Staff_Profile`
 - `Bulk_CIS_Template`
 
 Search supports customer name, CIS, IC, and policy number. Bulk matching uses CIS only.
+
+`Staff_Profile` holds default staff/RM information used across forms:
+staff name, staff IC, staff ID, FIMM ID, IPPC ID, position, RM code options, and branch options.
+Leader/approval details are not maintained in the app; approval columns can be signed by hand.
 
 ## Output Rules
 

@@ -5,9 +5,11 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
+from openpyxl import Workbook
 from reportlab.pdfgen import canvas
 import pypdf
 
+import excel_reader
 import package_engine
 
 
@@ -20,6 +22,9 @@ def _make_pdf(path: Path, title: str) -> None:
     c.drawString(50, 700, "Amount:")
     c.drawString(50, 670, "Product:")
     c.drawString(50, 640, "Date:")
+    c.drawString(50, 610, "Staff:")
+    c.drawString(50, 580, "RM Code:")
+    c.drawString(50, 550, "Branch:")
     c.save()
 
 
@@ -126,6 +131,22 @@ def test_package_engine_generates_ordered_combined_pdf() -> None:
                             "x": 100,
                             "y": 640,
                         },
+                        {
+                            "name": "staff_name",
+                            "source": "staff_profile",
+                            "profile_key": "staff_name",
+                            "page": 1,
+                            "x": 100,
+                            "y": 610,
+                        },
+                        {
+                            "name": "rm_branch",
+                            "source": "session",
+                            "session_key": "rm_branch",
+                            "page": 1,
+                            "x": 100,
+                            "y": 550,
+                        },
                     ],
                 },
                 "second_mapping": {
@@ -156,6 +177,14 @@ def test_package_engine_generates_ordered_combined_pdf() -> None:
                             "x": 100,
                             "y": 640,
                         },
+                        {
+                            "name": "staff_rm_code",
+                            "source": "session",
+                            "session_key": "staff_rm_code",
+                            "page": 1,
+                            "x": 100,
+                            "y": 580,
+                        },
                     ],
                 },
             },
@@ -173,6 +202,7 @@ def test_package_engine_generates_ordered_combined_pdf() -> None:
             "name": "Avery Tan",
             "ic_number": "900101101234",
             "cis": "CIS-987654",
+            "branch_code": "KLG",
             "amount": "25000",
             "product_type": "UT Subscription",
         }
@@ -187,9 +217,10 @@ def test_package_engine_generates_ordered_combined_pdf() -> None:
                 "forms_folder": str(forms_root),
                 "output_folder": str(output_root),
                 "default_font_size": 10,
+                "_staff_profile": {"staff_name": "CK Staff"},
             },
             output_root=output_root,
-            session={"date": "19/05/2026", "rm_branch": "KJG"},
+            session={"date": "19/05/2026", "staff_rm_code": "RM001"},
         )
 
         output_path = result["output_path"]
@@ -208,15 +239,84 @@ def test_package_engine_generates_ordered_combined_pdf() -> None:
         assert "Avery Tan" in page_texts[0]
         assert "25000" in page_texts[0]
         assert "19/05/2026" in page_texts[0]
+        assert "CK Staff" in page_texts[0]
+        assert "KLG" in page_texts[0]
         assert page_texts[1].strip() == ""
         assert "SECOND_SOURCE_TEMPLATE" in page_texts[2]
         assert "900101101234" in page_texts[2]
         assert "UT Subscription" in page_texts[2]
         assert "19/05/2026" in page_texts[2]
+        assert "RM001" in page_texts[2]
+
+
+def test_load_staff_profile_from_excel_table() -> None:
+    with tempfile.TemporaryDirectory() as td:
+        workbook_path = Path(td) / "clients.xlsx"
+        wb = Workbook()
+        ws = wb.active
+        ws.title = "Staff_Profile"
+        ws.append([
+            "staff_name",
+            "staff_ic",
+            "staff_id",
+            "fimm_id",
+            "ippc_id",
+            "staff_position",
+            "staff_rm_codes",
+            "staff_branches",
+        ])
+        ws.append([
+            "CK Staff",
+            "900101101234",
+            "S001",
+            "FIMM123",
+            "IPPC456",
+            "Relationship Manager",
+            "RM001, RM002",
+            "KJG, HQ",
+        ])
+        wb.save(workbook_path)
+
+        profile = excel_reader.load_staff_profile(workbook_path)
+
+        assert profile["staff_name"] == "CK Staff"
+        assert profile["rm_name"] == "CK Staff"
+        assert profile["staff_ic"] == "900101101234"
+        assert profile["staff_id"] == "S001"
+        assert profile["fimm_id"] == "FIMM123"
+        assert profile["ippc_id"] == "IPPC456"
+        assert profile["staff_position"] == "Relationship Manager"
+        assert profile["staff_rm_codes"] == ["RM001", "RM002"]
+        assert profile["staff_branches"] == ["KJG", "HQ"]
+
+
+def test_blank_staff_profile_falls_back_to_rm_profile() -> None:
+    with tempfile.TemporaryDirectory() as td:
+        workbook_path = Path(td) / "clients.xlsx"
+        wb = Workbook()
+        ws = wb.active
+        ws.title = "Staff_Profile"
+        ws.append(["field", "value"])
+        ws.append(["staff_name", ""])
+        ws.append(["staff_id", ""])
+        rm = wb.create_sheet("RM_Profile")
+        rm.append(["field", "value"])
+        rm.append(["rm_name", "Legacy RM"])
+        rm.append(["staff_id", "L001"])
+        rm.append(["branches", "KJG, PJY"])
+        wb.save(workbook_path)
+
+        profile = excel_reader.load_staff_profile(workbook_path)
+
+        assert profile["staff_name"] == "Legacy RM"
+        assert profile["staff_id"] == "L001"
+        assert profile["staff_branches"] == ["KJG", "PJY"]
 
 
 def main() -> None:
     test_package_engine_generates_ordered_combined_pdf()
+    test_load_staff_profile_from_excel_table()
+    test_blank_staff_profile_falls_back_to_rm_profile()
     print("OK: procedure package smoke")
 
 

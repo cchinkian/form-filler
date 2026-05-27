@@ -27,12 +27,14 @@ def main():
         c.drawString(50, 700, "CIF:")
         c.drawString(50, 670, "Amount:")
         c.drawString(50, 640, "Date:")
+        c.drawString(50, 610, "Staff:")
         c.save()
 
         settings = {
             "forms_folder": str(forms),
             "output_folder": str(output),
             "default_font_size": 10,
+            "_staff_profile": {"staff_name": "CK Staff"},
         }
         forms_config = {
             "_shared_fields": {},
@@ -45,6 +47,7 @@ def main():
                     {"name": "cif_no", "source": "data", "page": 1, "x": 100, "y": 700},
                     {"name": "amount", "source": "data", "page": 1, "x": 100, "y": 670, "required": True},
                     {"name": "date", "source": "session", "session_key": "date", "page": 1, "x": 100, "y": 640},
+                    {"name": "staff_name", "source": "staff_profile", "profile_key": "staff_name", "page": 1, "x": 100, "y": 610},
                 ],
             },
         }
@@ -74,6 +77,7 @@ def main():
         assert "Test Client" in text
         assert "10000" in text
         assert "19/05/2026" in text
+        assert "CK Staff" in text
         print(f"OK: {paths[0]}")
 
 

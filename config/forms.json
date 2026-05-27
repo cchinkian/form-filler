@@ -12,11 +12,15 @@
 
     "date":         {"name": "date",         "source": "session",    "session_key": "date",      "font_size": 10},
     "rm_branch":    {"name": "rm_branch",    "source": "session",    "session_key": "rm_branch", "font_size": 9},
+    "staff_rm_code":{"name": "staff_rm_code","source": "session",    "session_key": "staff_rm_code", "font_size": 9},
 
-    "rm_name":      {"name": "rm_name",      "source": "rm_profile", "profile_key": "rm_name",   "font_size": 9},
-    "staff_id":     {"name": "staff_id",     "source": "rm_profile", "profile_key": "staff_id",  "font_size": 9},
-    "fimm_id":      {"name": "fimm_id",      "source": "rm_profile", "profile_key": "fimm_id",   "font_size": 9},
-    "ippc_id":      {"name": "ippc_id",      "source": "rm_profile", "profile_key": "ippc_id",   "font_size": 9},
+    "staff_name":   {"name": "staff_name",   "source": "staff_profile", "profile_key": "staff_name", "font_size": 9},
+    "staff_ic":     {"name": "staff_ic",     "source": "staff_profile", "profile_key": "staff_ic", "font_size": 9, "format": "ic_dashed"},
+    "staff_id":     {"name": "staff_id",     "source": "staff_profile", "profile_key": "staff_id",  "font_size": 9},
+    "fimm_id":      {"name": "fimm_id",      "source": "staff_profile", "profile_key": "fimm_id",   "font_size": 9},
+    "ippc_id":      {"name": "ippc_id",      "source": "staff_profile", "profile_key": "ippc_id",   "font_size": 9},
+    "staff_position":{"name": "staff_position","source": "staff_profile", "profile_key": "staff_position", "font_size": 9},
+    "rm_name":      {"name": "rm_name",      "source": "staff_profile", "profile_key": "rm_name",   "font_size": 9},
 
     "currency_myr": {"name": "currency_myr", "source": "fixed",      "value": "MYR", "font_size": 10}
   },
@@ -27,7 +31,7 @@
       "Use 'shared' to reference _shared_fields — only x, y, page needed.",
       "Use 'name' + full field def for form-specific fields.",
       "Each form folder should have exactly one PDF; the PDF filename can be anything.",
-      "Source types: data | rm_profile | session | fixed | auto."
+      "Source types: data | staff_profile | session | fixed | auto."
     ],
     "name": "Form Display Name",
     "template_subfolder": "subfolder_inside_forms",
@@ -37,7 +41,8 @@
       {"shared": "ic_number",   "page": 1, "x": 0, "y": 0},
       {"shared": "date",        "page": 1, "x": 0, "y": 0},
       {"shared": "rm_branch",   "page": 1, "x": 0, "y": 0},
-      {"shared": "rm_name",     "page": 1, "x": 0, "y": 0},
+      {"shared": "staff_rm_code","page": 1, "x": 0, "y": 0},
+      {"shared": "staff_name",  "page": 1, "x": 0, "y": 0},
       {"shared": "staff_id",    "page": 1, "x": 0, "y": 0},
       {"shared": "fimm_id",     "page": 1, "x": 0, "y": 0,
        "_comment": "Only include if THIS form has an FIMM ID slot"},
