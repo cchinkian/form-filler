@@ -808,6 +808,38 @@ def load_recent_history(path: Path, customer: dict, limit: int = 10) -> list[dic
     return rows
 
 
+def load_history_records(path: Path, query: str = "", limit: int = 200) -> list[dict]:
+    if not path.exists():
+        return []
+    query_key = normalize_lookup_key(query)
+    wb = _open_wb(path)
+    ws = wb.active
+    headers = _history_headers(ws)
+    rows = []
+    try:
+        for values in reversed(list(ws.iter_rows(min_row=2, values_only=True))):
+            row = {headers[idx]: (value if value is not None else "") for idx, value in enumerate(values) if idx < len(headers)}
+            payload_raw = row.get(HISTORY_PAYLOAD_COLUMN, "")
+            payload = {}
+            if payload_raw:
+                try:
+                    payload = json.loads(str(payload_raw))
+                except json.JSONDecodeError:
+                    payload = {}
+            if not payload:
+                payload = _legacy_payload_from_history(row)
+            row["_payload"] = payload
+            haystack = normalize_lookup_key(" ".join(str(row.get(col, "")) for col in headers if col != HISTORY_PAYLOAD_COLUMN))
+            if query_key and query_key not in haystack:
+                continue
+            rows.append(row)
+            if len(rows) >= limit:
+                break
+    finally:
+        wb.close()
+    return rows
+
+
 # ── Public loaders ────────────────────────────────────────────────────────────
 
 def load_master(path: Path) -> dict[str, dict]:

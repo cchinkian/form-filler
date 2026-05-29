@@ -10,6 +10,9 @@
   ],
   "customer_workbook": "data/clients.xlsx",
   "forms_folder": "forms",
+  "forms_folders": [
+    "forms"
+  ],
   "output_folder": "Output",
   "history_log_path": "data/HistoryLog.xlsx",
   "procedure_master_path": "config/procedures.json",

@@ -46,6 +46,22 @@ def forms_folder_path(settings: dict) -> Path:
     return resolve_path(settings.get("forms_folder", "forms"))
 
 
+def forms_folder_paths(settings: dict) -> list[Path]:
+    folders = settings.get("forms_folders") or []
+    if isinstance(folders, str):
+        folders = [folders]
+    paths = []
+    for raw in folders:
+        if raw:
+            path = resolve_path(str(raw))
+            if path not in paths:
+                paths.append(path)
+    primary = forms_folder_path(settings)
+    if primary not in paths:
+        paths.insert(0, primary)
+    return paths
+
+
 def output_folder_path(settings: dict) -> Path:
     return resolve_path(settings.get("output_folder", "Output"))
 
@@ -266,6 +282,21 @@ def scan_forms_folder(settings: dict) -> list[str]:
     return sorted(p.name for p in forms_folder.iterdir() if p.is_dir())
 
 
+def scan_all_form_folders(settings: dict) -> list[dict]:
+    rows = []
+    for root in forms_folder_paths(settings):
+        if not root.exists():
+            continue
+        for folder in sorted(p for p in root.iterdir() if p.is_dir()):
+            rows.append({
+                "label": f"{folder.name}  [{root}]",
+                "folder": folder.name,
+                "path": str(folder),
+                "root": str(root),
+            })
+    return rows
+
+
 def scan_form_subfolders(settings: dict, root: Path | None = None) -> list[dict]:
     """Inspect immediate form subfolders for direct PDF and mapping.json status."""
     forms_folder = root or forms_folder_path(settings)
@@ -274,6 +305,12 @@ def scan_form_subfolders(settings: dict, root: Path | None = None) -> list[dict]
     rows = []
     for folder in sorted(p for p in forms_folder.iterdir() if p.is_dir()):
         pdfs = sorted(p.name for p in folder.iterdir() if p.is_file() and p.suffix.lower() == ".pdf")
+        old_forms = folder / "old forms"
+        nested_pdfs = sorted(
+            str(p.relative_to(folder))
+            for p in folder.rglob("*.pdf")
+            if p.is_file() and p.parent != folder
+        )
         mapping_path = folder / FOLDER_MAPPING_FILENAME
         updated = ""
         mapping_key = ""
@@ -292,6 +329,9 @@ def scan_form_subfolders(settings: dict, root: Path | None = None) -> list[dict]
             "path": str(folder),
             "pdf_count": len(pdfs),
             "pdf_files": pdfs,
+            "old_forms_exists": old_forms.exists() and old_forms.is_dir(),
+            "nested_pdf_count": len(nested_pdfs),
+            "nested_pdf_files": nested_pdfs,
             "mapping_exists": mapping_path.exists(),
             "mapping_path": str(mapping_path),
             "mapping_key": mapping_key,

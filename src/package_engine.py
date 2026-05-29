@@ -55,10 +55,10 @@ def filename_date(date_text: str | None = None) -> str:
     if date_text:
         for fmt in ("%d/%m/%Y", "%Y-%m-%d", "%d-%m-%Y", "%Y%m%d"):
             try:
-                return datetime.datetime.strptime(str(date_text), fmt).strftime("%d_%m_%Y")
+                return datetime.datetime.strptime(str(date_text), fmt).strftime("%d%m%y")
             except ValueError:
                 pass
-    return datetime.date.today().strftime("%d_%m_%Y")
+    return datetime.date.today().strftime("%d%m%y")
 
 
 def procedure_display_name(procedure: dict) -> str:
@@ -198,7 +198,7 @@ def data_fields_for_procedure(
 ) -> list[dict]:
     shared = forms_config.get("_shared_fields", {})
     rows: list[dict] = []
-    seen = set()
+    by_identity: dict[str, dict] = {}
     for item in procedure_items:
         if catalog.get_value(item, "ProcedureCode") != procedure_code:
             continue
@@ -218,18 +218,25 @@ def data_fields_for_procedure(
                 continue
             sheet = field.get("excel_sheet") or field.get("ExcelSheet") or ""
             identity = f"{sheet}::{key}" if sheet else key
-            if identity in seen:
-                continue
-            seen.add(identity)
-            rows.append({
-                "id": identity,
-                "key": key,
-                "label": field.get("DisplayLabel") or key.replace("_", " ").title(),
-                "required": bool(field.get("required") or field.get("Required")),
-                "source_form": source_code,
-                "excel_sheet": sheet,
-            })
-    return rows
+            row = by_identity.get(identity)
+            if not row:
+                row = {
+                    "id": identity,
+                    "key": key,
+                    "label": field.get("DisplayLabel") or key.replace("_", " ").title(),
+                    "required": bool(field.get("required") or field.get("Required")),
+                    "source_form": source_code,
+                    "source_forms": [],
+                    "usage_count": 0,
+                    "excel_sheet": sheet,
+                }
+                by_identity[identity] = row
+                rows.append(row)
+            row["usage_count"] += 1
+            row["required"] = bool(row.get("required") or field.get("required") or field.get("Required"))
+            if source_code and source_code not in row["source_forms"]:
+                row["source_forms"].append(source_code)
+    return sorted(rows, key=lambda r: (-int(r.get("usage_count", 1) or 1), str(r.get("label", "")).lower()))
 
 
 def missing_required_fields(
@@ -332,6 +339,7 @@ def generate_package(
     writer = pypdf.PdfWriter()
     warnings: list[str] = []
     source_count = 0
+    manifest: list[dict] = []
 
     settings_for_overlay = {
         **settings,
@@ -375,6 +383,17 @@ def generate_package(
             form_config = _source_mapping(forms_config, source)
             if mapping_key not in forms_config:
                 warnings.append(f"{source_code}: no mapping found for MappingKey '{mapping_key}'")
+            manifest.append({
+                "step": catalog.get_value(item, "StepNo"),
+                "source_form_code": source_code,
+                "source_form_name": catalog.get_value(source, "DisplayName", source_code),
+                "source_form_version": catalog.get_value(source, "Version", ""),
+                "pdf_path": str(pdf_path),
+                "pdf_filename": pdf_path.name,
+                "mapping_key": mapping_key,
+                "mapping_last_updated": form_config.get("last_updated", ""),
+                "mapping_field_count": len(form_config.get("fields", []) or []),
+            })
             tmp_pdf = tmp_dir / f"{source_code}.pdf"
             blanks, final_tmp = pdf_engine.fill_form(
                 pdf_path, form_config, fill_data, settings_for_overlay, tmp_pdf
@@ -410,6 +429,7 @@ def generate_package(
         "procedure_name": procedure_display_name(procedure),
         "session": session,
         "manual_values": manual_values,
+        "manifest": manifest,
     }
 
 
@@ -429,6 +449,7 @@ def history_row(result: dict, generated_by: str = "") -> dict:
         "session": result.get("session", {}),
         "account": result.get("account", {}),
         "manual_values": result.get("manual_values", {}),
+        "manifest": result.get("manifest", []),
         "output_path": str(result.get("output_path", "")),
         "status": result.get("status", ""),
     }
@@ -446,6 +467,54 @@ def history_row(result: dict, generated_by: str = "") -> dict:
         "FollowUpNote": client.get("follow_up_note", ""),
         "Status": result.get("status", ""),
         "ErrorMessage": " | ".join(result.get("warnings", [])),
+        "GeneratedBy": generated_by,
+        "RestorePayload": json.dumps(payload, ensure_ascii=False, default=str),
+    }
+
+
+def draft_history_row(
+    client: dict,
+    procedure: dict,
+    session: dict,
+    manual_values: dict | None = None,
+    account: dict | None = None,
+    generated_by: str = "",
+) -> dict:
+    procedure_code = catalog.get_value(procedure, "ProcedureCode", "")
+    procedure_name = procedure_display_name(procedure) if procedure else ""
+    manifest = []
+    payload = {
+        "version": 1,
+        "record_type": "draft",
+        "client": {
+            "name": client.get("name") or client.get("client_name") or "",
+            "client_name": client.get("client_name") or client.get("name") or "",
+            "cis": client.get("cis") or client.get("cif_no") or "",
+            "cif_no": client.get("cif_no") or client.get("cis") or "",
+            "ic_number": client.get("ic_number") or "",
+        },
+        "procedure_code": procedure_code,
+        "procedure_name": procedure_name,
+        "session": dict(session or {}),
+        "account": dict(account or {}),
+        "manual_values": dict(manual_values or {}),
+        "manifest": manifest,
+        "status": "Draft",
+    }
+    return {
+        "GeneratedDateTime": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        "ClientName": client.get("name") or client.get("client_name") or "",
+        "CIS": client.get("cis") or client.get("cif_no") or "",
+        "ProcedureCode": procedure_code,
+        "ProcedureName": procedure_name,
+        "OutputFilePath": "",
+        "Amount": client.get("amount", ""),
+        "FDDetails": client.get("fd_details", ""),
+        "ProductType": client.get("product_type", ""),
+        "ActionPurpose": client.get("action_purpose", ""),
+        "FollowUpNote": client.get("follow_up_note", ""),
+        "Status": "Draft",
+        "ErrorMessage": "",
         "GeneratedBy": generated_by,
         "RestorePayload": json.dumps(payload, ensure_ascii=False, default=str),
     }

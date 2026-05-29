@@ -65,6 +65,7 @@ class CoordPickerFrame(tk.Frame):
         self._last_suggested_format = "text"
         self._schema: list[dict] = []
         self._field_choices: list[str] = []
+        self._folder_lookup: dict[str, str] = {}
 
         # Form identity vars
         self._form_id       = tk.StringVar()
@@ -113,12 +114,9 @@ class CoordPickerFrame(tk.Frame):
             tk.Label(parent, text=text, bg="#f0f0f0", anchor="w").pack(fill=tk.X)
             tk.Entry(parent, textvariable=var).pack(fill=tk.X, pady=(0, 3))
 
-        # ── Form identity ──
-        section(left, "1. Form identity")
-        lbl_entry(left, "Mapping key (auto):", self._form_id)
-        lbl_entry(left, "Display name (auto):", self._form_name_var)
-
-        tk.Label(left, text="Template subfolder:", bg="#f0f0f0",
+        # ── Form folder ──
+        section(left, "1. Form folder")
+        tk.Label(left, text="Search form folder:", bg="#f0f0f0",
                  anchor="w").pack(fill=tk.X)
         sub_row = tk.Frame(left, bg="#f0f0f0")
         sub_row.pack(fill=tk.X, pady=(0, 3))
@@ -130,6 +128,9 @@ class CoordPickerFrame(tk.Frame):
         tk.Button(sub_row, text="↻", width=3,
                   command=lambda: self._refresh_subfolders(auto_open=True)).pack(side=tk.LEFT, padx=2)
         self._refresh_subfolders()
+        self.lbl_mapping_info = tk.Label(left, text="Mapping loads from the selected folder.",
+                                         bg="#f0f0f0", fg="gray", anchor="w", wraplength=290, justify="left")
+        self.lbl_mapping_info.pack(fill=tk.X, pady=(0, 4))
 
         tk.Button(left, text="Open Folder PDF",
                   command=lambda: self._load_pdf_from_subfolder(show_errors=True)).pack(fill=tk.X, pady=(2, 4))
@@ -286,14 +287,19 @@ class CoordPickerFrame(tk.Frame):
 
     # ── Subfolder auto-discovery ──────────────────────────────────────────────
 
+    def _selected_folder_value(self) -> str:
+        return self._folder_lookup.get(self._subfolder.get(), self._subfolder.get())
+
     def _refresh_subfolders(self, auto_open: bool = False):
-        """Scan C:\\Forms (from settings) and populate subfolder dropdown."""
+        """Scan configured source form roots and populate folder dropdown."""
         try:
             settings = config_loader.load_settings()
-            folders  = config_loader.scan_forms_folder(settings)
-            self._cmb_subfolder["values"] = folders
-            if folders and not self._subfolder.get():
-                self._subfolder.set(folders[0])
+            rows = config_loader.scan_all_form_folders(settings)
+            self._folder_lookup = {row["label"]: row["path"] for row in rows}
+            labels = list(self._folder_lookup)
+            self._cmb_subfolder["values"] = labels
+            if labels and not self._subfolder.get():
+                self._subfolder.set(labels[0])
             if auto_open and self._subfolder.get():
                 self._on_subfolder_selected(auto_open=True)
         except Exception:
@@ -359,22 +365,25 @@ class CoordPickerFrame(tk.Frame):
 
     def _on_subfolder_selected(self, _=None, auto_open: bool = True, force_identity: bool = True):
         """When RM picks a subfolder, auto-set identity, mapping, and PDF."""
-        sub = self._subfolder.get()
+        sub = self._selected_folder_value()
         if not sub:
             return
-        self._apply_subfolder_identity_defaults(sub, force=force_identity)
+        self._apply_subfolder_identity_defaults(Path(sub).name, force=force_identity)
         # Load existing form fields if already mapped
         try:
             forms = config_loader.load_forms()
             for fid, fcfg in forms.items():
                 if fid.startswith("_"):
                     continue
-                if fcfg.get("template_subfolder") == sub:
+                if fcfg.get("template_subfolder") in {sub, Path(sub).name}:
                     self._form_id.set(fid)
                     self._form_name_var.set(fcfg.get("name", ""))
                     self._fields = list(fcfg.get("fields", []))
                     self._selected_idx = None
                     self._refresh_list()
+                    if hasattr(self, "lbl_mapping_info"):
+                        updated = fcfg.get("last_updated") or "no edit date"
+                        self.lbl_mapping_info.config(text=f"Mapped {len(self._fields)} field(s), last edit {updated}.")
                     self._status(
                         f"Loaded existing mapping for '{fid}' "
                         f"({len(self._fields)} fields). "
@@ -463,14 +472,21 @@ class CoordPickerFrame(tk.Frame):
     def _load_pdf_from_subfolder(self, show_errors: bool = False) -> bool:
         if not HAS_DEPS:
             return False
-        sub = self._subfolder.get().strip()
+        sub = self._selected_folder_value().strip()
         if not sub:
             if show_errors:
                 messagebox.showwarning("No folder", "Choose a template subfolder first.")
             return False
         try:
-            settings = config_loader.load_settings()
-            path = config_loader.find_template(settings, sub)
+            candidate = Path(sub)
+            if candidate.is_absolute() and candidate.is_dir():
+                pdfs = sorted(p for p in candidate.iterdir() if p.is_file() and p.suffix.lower() == ".pdf")
+                if len(pdfs) != 1:
+                    raise ValueError(f"Folder must contain exactly one top-level PDF; found {len(pdfs)}.")
+                path = pdfs[0]
+            else:
+                settings = config_loader.load_settings()
+                path = config_loader.find_template(settings, sub)
         except Exception as e:
             if show_errors:
                 messagebox.showwarning("Template PDF not ready", str(e))
@@ -569,8 +585,6 @@ class CoordPickerFrame(tk.Frame):
         self._selected_idx = None
         self._render()
         self._dot(cx, cy, "·")
-        self._status(f"x={px}  y={py}  (page {self._page_num})  — "
-                     "enter field name and click Add Field")
 
     def _on_mouse_drag(self, e):
         if self._selected_idx is None or self._drag_mode not in {"move", "resize"}:
@@ -866,9 +880,13 @@ class CoordPickerFrame(tk.Frame):
             except Exception:
                 pass
 
+        selected_folder = self._selected_folder_value().strip()
+        folder_path = Path(selected_folder) if selected_folder else None
+        template_subfolder = folder_path.name if folder_path and folder_path.is_absolute() else selected_folder
+
         form_config = {
             "name":               self._form_name_var.get().strip() or fid,
-            "template_subfolder": self._subfolder.get().strip(),
+            "template_subfolder": template_subfolder,
             "template_filename":  pdf_filename,
             "template_hash":      pdf_hash,
             "fields":             self._fields,
@@ -876,12 +894,15 @@ class CoordPickerFrame(tk.Frame):
         clean[fid] = form_config
         config_loader.save_forms(clean)
         folder_mapping_path = None
-        subfolder = self._subfolder.get().strip()
+        subfolder = selected_folder
         if subfolder:
             try:
                 settings = config_loader.load_settings()
+                target_folder = Path(subfolder)
+                if not target_folder.is_absolute():
+                    target_folder = config_loader.forms_folder_path(settings) / subfolder
                 folder_mapping_path = config_loader.save_folder_mapping(
-                    config_loader.forms_folder_path(settings) / subfolder,
+                    target_folder,
                     fid,
                     form_config,
                 )
