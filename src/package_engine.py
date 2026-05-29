@@ -35,8 +35,9 @@ COMMON_DATA_FIELDS = {
 
 def safe_filename(value: str, fallback: str = "Client") -> str:
     text = str(value or fallback).strip() or fallback
-    text = re.sub(r'[<>:"/\\|?*\n\r\t]+', " ", text)
-    text = re.sub(r"\s+", " ", text).strip()
+    text = re.sub(r'[<>:"/\\|?*\n\r\t]+', "", text)
+    text = re.sub(r"[^\w._ -]+", "", text, flags=re.UNICODE)
+    text = re.sub(r"[\s-]+", "_", text).strip("._-")
     return text[:120] or fallback
 
 
@@ -50,8 +51,53 @@ def yyyymmdd(date_text: str | None = None) -> str:
     return datetime.date.today().strftime("%Y%m%d")
 
 
+def filename_date(date_text: str | None = None) -> str:
+    if date_text:
+        for fmt in ("%d/%m/%Y", "%Y-%m-%d", "%d-%m-%Y", "%Y%m%d"):
+            try:
+                return datetime.datetime.strptime(str(date_text), fmt).strftime("%d_%m_%Y")
+            except ValueError:
+                pass
+    return datetime.date.today().strftime("%d_%m_%Y")
+
+
 def procedure_display_name(procedure: dict) -> str:
     return str(catalog.get_value(procedure, "DisplayName", "Procedure"))
+
+
+def output_filename_for_client(client: dict, procedure: dict, session: dict) -> str:
+    client_name = safe_filename(client.get("name") or client.get("client_name") or "Client")
+    proc_name = safe_filename(procedure_display_name(procedure), "Procedure")
+    proc_code = safe_filename(catalog.get_value(procedure, "ProcedureCode", ""), "Procedure")
+    date_text = filename_date(session.get("date"))
+    compact_date = yyyymmdd(session.get("date"))
+    template = str(catalog.get_value(procedure, "DefaultOutputName", "") or "").strip()
+    values = {
+        "client_name": client_name,
+        "client": client_name,
+        "date": date_text,
+        "yyyymmdd": compact_date,
+        "procedure": proc_name,
+        "procedure_code": proc_code,
+    }
+    if not template:
+        name = "{client_name}_{date}_{procedure}".format(**values)
+    elif "{" in template and "}" in template:
+        class _SafeDict(dict):
+            def __missing__(self, key):
+                return ""
+        name = template.format_map(_SafeDict(values))
+    else:
+        name = template
+        for old, value in [
+            ("ClientName", client_name),
+            ("Client", client_name),
+            ("Date", date_text),
+            ("ProcedureCode", proc_code),
+            ("ProcedureName", proc_name),
+        ]:
+            name = re.sub(rf"(?<![A-Za-z0-9]){old}(?![A-Za-z0-9])", value, name, flags=re.IGNORECASE)
+    return safe_filename(name, f"{client_name}_{date_text}_{proc_name}") + ".pdf"
 
 
 def output_path_for_client(
@@ -63,8 +109,7 @@ def output_path_for_client(
     client_folder: bool = False,
 ) -> Path:
     client_name = safe_filename(client.get("name") or client.get("client_name") or "Client")
-    proc_name = safe_filename(procedure_display_name(procedure), "Procedure")
-    filename = f"{client_name}_{yyyymmdd(session.get('date'))}_{proc_name}.pdf"
+    filename = output_filename_for_client(client, procedure, session)
     root = bulk_root or output_root
     if client_folder:
         root = root / client_name

@@ -21,6 +21,7 @@ from pathlib import Path
 
 
 _BACKUP_RETENTION = 100
+FOLDER_MAPPING_FILENAME = "mapping.json"
 
 
 def _base_dir() -> Path:
@@ -149,9 +150,68 @@ def ensure_clients_xlsx() -> dict:
 
 # ── Forms ─────────────────────────────────────────────────────────────────────
 
+def _mapping_entry_from_folder_json(folder: Path, data: dict) -> tuple[str, dict] | None:
+    if not isinstance(data, dict):
+        return None
+    mapping_key = (
+        data.get("mapping_key")
+        or data.get("MappingKey")
+        or data.get("form_id")
+        or data.get("id")
+        or folder.name
+    )
+    mapping_key = str(mapping_key or "").strip()
+    if not mapping_key:
+        return None
+    entry = {
+        "name": data.get("display_name") or data.get("name") or data.get("DisplayName") or mapping_key,
+        "template_subfolder": data.get("template_subfolder") or folder.name,
+        "template_filename": data.get("template_filename") or data.get("pdf_file") or "",
+        "template_hash": data.get("template_hash", ""),
+        "last_updated": data.get("last_updated", ""),
+        "fields": data.get("fields", []),
+    }
+    return mapping_key, entry
+
+
+def load_folder_mapping(folder: Path) -> tuple[str, dict] | None:
+    path = folder / FOLDER_MAPPING_FILENAME
+    if not path.exists():
+        return None
+    with open(path, encoding="utf-8") as f:
+        data = json.load(f)
+    return _mapping_entry_from_folder_json(folder, data)
+
+
+def load_folder_mappings(settings: dict | None = None) -> dict:
+    try:
+        settings = settings or load_settings()
+        root = forms_folder_path(settings)
+    except Exception:
+        return {}
+    if not root.exists():
+        return {}
+    mappings = {}
+    for folder in sorted(p for p in root.iterdir() if p.is_dir()):
+        try:
+            loaded = load_folder_mapping(folder)
+        except Exception:
+            loaded = None
+        if loaded:
+            key, entry = loaded
+            mappings[key] = entry
+    return mappings
+
+
 def load_forms() -> dict:
     with open(_config_path("forms.json"), encoding="utf-8") as f:
-        return json.load(f)
+        data = json.load(f)
+    if not isinstance(data, dict):
+        data = {}
+    merged = dict(data)
+    for key, entry in load_folder_mappings().items():
+        merged[key] = entry
+    return merged
 
 
 def save_forms(data: dict):
@@ -162,6 +222,26 @@ def save_forms(data: dict):
         shutil.copy(forms_path, bak_path)
     with open(forms_path, "w", encoding="utf-8") as f:
         json.dump(data, f, indent=2, ensure_ascii=False)
+
+
+def save_folder_mapping(folder: Path, mapping_key: str, form_config: dict) -> Path:
+    folder.mkdir(parents=True, exist_ok=True)
+    path = folder / FOLDER_MAPPING_FILENAME
+    pdf_file = form_config.get("template_filename", "")
+    payload = {
+        "mapping_key": mapping_key,
+        "display_name": form_config.get("name") or mapping_key,
+        "template_subfolder": form_config.get("template_subfolder") or folder.name,
+        "pdf_file": pdf_file,
+        "template_hash": form_config.get("template_hash", ""),
+        "last_updated": datetime.datetime.now().astimezone().isoformat(timespec="seconds"),
+        "fields": form_config.get("fields", []),
+    }
+    if path.exists():
+        shutil.copy(path, path.with_suffix(path.suffix + ".bak"))
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(payload, f, indent=2, ensure_ascii=False)
+    return path
 
 
 # ── Template PDF ──────────────────────────────────────────────────────────────
@@ -184,6 +264,41 @@ def scan_forms_folder(settings: dict) -> list[str]:
     if not forms_folder.exists():
         return []
     return sorted(p.name for p in forms_folder.iterdir() if p.is_dir())
+
+
+def scan_form_subfolders(settings: dict, root: Path | None = None) -> list[dict]:
+    """Inspect immediate form subfolders for direct PDF and mapping.json status."""
+    forms_folder = root or forms_folder_path(settings)
+    if not forms_folder.exists():
+        return []
+    rows = []
+    for folder in sorted(p for p in forms_folder.iterdir() if p.is_dir()):
+        pdfs = sorted(p.name for p in folder.iterdir() if p.is_file() and p.suffix.lower() == ".pdf")
+        mapping_path = folder / FOLDER_MAPPING_FILENAME
+        updated = ""
+        mapping_key = ""
+        field_count = 0
+        if mapping_path.exists():
+            try:
+                with open(mapping_path, encoding="utf-8") as f:
+                    mapping = json.load(f)
+                mapping_key = str(mapping.get("mapping_key") or mapping.get("MappingKey") or folder.name)
+                updated = str(mapping.get("last_updated") or "")
+                field_count = len(mapping.get("fields", []) or [])
+            except Exception:
+                updated = "unreadable"
+        rows.append({
+            "folder": folder.name,
+            "path": str(folder),
+            "pdf_count": len(pdfs),
+            "pdf_files": pdfs,
+            "mapping_exists": mapping_path.exists(),
+            "mapping_path": str(mapping_path),
+            "mapping_key": mapping_key,
+            "mapping_updated": updated,
+            "field_count": field_count,
+        })
+    return rows
 
 
 def find_template(settings: dict, template_subfolder: str,

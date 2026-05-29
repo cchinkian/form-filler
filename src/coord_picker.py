@@ -47,14 +47,10 @@ AUTO_TYPES    = ["date", "year", "month"]
 SESSION_FIELDS = ["date", "staff_rm_code", "rm_code", "rm_branch"]
 
 
-class CoordPickerApp(tk.Tk):
-    def __init__(self):
-        super().__init__()
-        self.title("Coord Picker — Form Field Mapper")
-        self.geometry("1050x700")
-        self.resizable(True, True)
-        self.minsize(800, 560)
-        self._set_window_icon()
+class CoordPickerFrame(tk.Frame):
+    def __init__(self, master=None, startup_args: list[str] | None = None):
+        super().__init__(master)
+        self._startup_args = startup_args
 
         self._doc        = None
         self._page_num   = 1
@@ -100,21 +96,6 @@ class CoordPickerApp(tk.Tk):
                 "PyMuPDF and Pillow are required.\n"
                 "pip install PyMuPDF Pillow"
             )
-
-    def _set_window_icon(self):
-        bases = []
-        if getattr(sys, "frozen", False):
-            bases.append(Path(getattr(sys, "_MEIPASS", Path(sys.executable).parent)))
-            bases.append(Path(sys.executable).parent)
-        bases.append(Path(__file__).resolve().parents[1])
-        for base in bases:
-            icon = base / "assets" / "app.ico"
-            if icon.exists():
-                try:
-                    self.iconbitmap(default=str(icon))
-                    return
-                except tk.TclError:
-                    continue
 
     # ── UI construction ───────────────────────────────────────────────────────
 
@@ -272,7 +253,7 @@ class CoordPickerApp(tk.Tk):
         self.lst_fields.bind("<<ListboxSelect>>", self._on_list_select)
 
         ttk.Separator(left, orient="horizontal").pack(fill=tk.X, pady=4)
-        tk.Button(left, text="Save to forms.json",
+        tk.Button(left, text="Save Mapping",
                   bg="#1F4E79", fg="white", height=2,
                   command=self._save).pack(fill=tk.X)
 
@@ -426,6 +407,46 @@ class CoordPickerApp(tk.Tk):
         except Exception:
             return False
 
+    def load_source_form(self, source_form: dict, settings: dict | None = None):
+        """Load a source form into the embedded mapper."""
+        if not source_form:
+            return
+        fid = str(source_form.get("MappingKey") or source_form.get("SourceFormCode") or "").strip()
+        display = str(source_form.get("DisplayName") or fid).strip()
+        raw_path = str(source_form.get("PDFFilePath") or "").strip()
+        if fid:
+            self._form_id.set(fid)
+        if display:
+            self._form_name_var.set(display)
+        if raw_path:
+            try:
+                settings = settings or config_loader.load_settings()
+                raw = Path(raw_path)
+                candidate = raw if raw.is_absolute() else config_loader.forms_folder_path(settings) / raw
+                if candidate.is_dir():
+                    try:
+                        rel = candidate.relative_to(config_loader.forms_folder_path(settings))
+                        self._subfolder.set(str(rel))
+                    except ValueError:
+                        self._subfolder.set(candidate.name)
+                elif candidate.exists():
+                    self._subfolder.set(candidate.parent.name)
+            except Exception:
+                pass
+        if fid:
+            self._load_existing_form_mapping(fid)
+        if raw_path:
+            try:
+                settings = settings or config_loader.load_settings()
+                raw = Path(raw_path)
+                candidate = raw if raw.is_absolute() else config_loader.forms_folder_path(settings) / raw
+                if candidate.is_dir():
+                    self._load_pdf_from_subfolder(show_errors=False)
+                elif candidate.exists() and candidate.suffix.lower() == ".pdf":
+                    self._load_pdf_path(candidate)
+            except Exception as e:
+                self._status(str(e), "red")
+
     # ── PDF ───────────────────────────────────────────────────────────────────
 
     def _open_pdf(self):
@@ -477,7 +498,10 @@ class CoordPickerApp(tk.Tk):
         parser.add_argument("--display-name")
         parser.add_argument("--subfolder")
         parser.add_argument("--pdf")
-        args, _ = parser.parse_known_args()
+        if self._startup_args is None:
+            args, _ = parser.parse_known_args()
+        else:
+            args, _ = parser.parse_known_args(self._startup_args)
         if args.form_id:
             self._form_id.set(args.form_id)
         if args.display_name:
@@ -842,14 +866,27 @@ class CoordPickerApp(tk.Tk):
             except Exception:
                 pass
 
-        clean[fid] = {
+        form_config = {
             "name":               self._form_name_var.get().strip() or fid,
             "template_subfolder": self._subfolder.get().strip(),
             "template_filename":  pdf_filename,
             "template_hash":      pdf_hash,
             "fields":             self._fields,
         }
+        clean[fid] = form_config
         config_loader.save_forms(clean)
+        folder_mapping_path = None
+        subfolder = self._subfolder.get().strip()
+        if subfolder:
+            try:
+                settings = config_loader.load_settings()
+                folder_mapping_path = config_loader.save_folder_mapping(
+                    config_loader.forms_folder_path(settings) / subfolder,
+                    fid,
+                    form_config,
+                )
+            except Exception:
+                folder_mapping_path = None
         template_path = None
         template_error = ""
         try:
@@ -859,17 +896,19 @@ class CoordPickerApp(tk.Tk):
         except Exception as e:
             template_error = f"\n\nExcel template was not updated: {e}"
         self._status(
-            f"Saved {len(self._fields)} fields for '{fid}' → forms.json", "green")
+            f"Saved {len(self._fields)} fields for '{fid}'", "green")
         template_msg = (
             f"\n\nExcel template updated:\n{template_path}"
             if template_path else template_error
         )
+        folder_msg = f"\n\nFolder mapping updated:\n{folder_mapping_path}" if folder_mapping_path else ""
         messagebox.showinfo(
             "Saved",
-            f"'{fid}' saved to forms.json.\n"
+            f"'{fid}' mapping saved.\n"
             f"{len(self._fields)} field(s) across "
             f"{len({f['page'] for f in self._fields})} page(s)."
             f"{template_msg}"
+            f"{folder_msg}"
         )
 
     def _sync_excel_template(self, form_id: str) -> Path | None:
@@ -918,6 +957,33 @@ class CoordPickerApp(tk.Tk):
 
     def _status(self, msg: str, color: str = "gray"):
         self.lbl_status.config(text=f"  {msg}", fg=color)
+
+
+class CoordPickerApp(tk.Tk):
+    def __init__(self):
+        super().__init__()
+        self.title("Coord Picker — Form Field Mapper")
+        self.geometry("1050x700")
+        self.resizable(True, True)
+        self.minsize(800, 560)
+        self._set_window_icon()
+        self.frame = CoordPickerFrame(self)
+        self.frame.pack(fill=tk.BOTH, expand=True)
+
+    def _set_window_icon(self):
+        bases = []
+        if getattr(sys, "frozen", False):
+            bases.append(Path(getattr(sys, "_MEIPASS", Path(sys.executable).parent)))
+            bases.append(Path(sys.executable).parent)
+        bases.append(Path(__file__).resolve().parents[1])
+        for base in bases:
+            icon = base / "assets" / "app.ico"
+            if icon.exists():
+                try:
+                    self.iconbitmap(default=str(icon))
+                    return
+                except tk.TclError:
+                    continue
 
 
 if __name__ == "__main__":
