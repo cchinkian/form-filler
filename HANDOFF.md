@@ -9,27 +9,27 @@ Core flow:
 The app is local-only and offline. Do not add cloud sync, login, API validation, CRM, manager approval, OCR, email/WhatsApp sending, SQLite/server database, or online form update features for Version 1.
 
 ### Latest Published Release
-- Release tag: `combined-coordinate-tags-folder-scan-2026-05-30`
-- Release page: https://github.com/cchinkian/form-filler/releases/tag/combined-coordinate-tags-folder-scan-2026-05-30
+- Release tag: `workflow-drafts-source-scan-2026-05-30`
+- Release page: https://github.com/cchinkian/form-filler/releases/tag/workflow-drafts-source-scan-2026-05-30
 - Latest app ZIP: https://github.com/cchinkian/form-filler/releases/latest/download/FormFiller-portable.zip
 - Latest sample work folder ZIP remains from the previous release: https://github.com/cchinkian/form-filler/releases/download/procedure-automation-source-history-update-2026-05-27/FormFiller_Test_WorkFolder_20260527.zip
-- GitHub Windows build: `26649523536`
+- GitHub Windows build: `26667489012`
 - Latest release assets:
   - `FormFiller-portable.zip` — contains `FormFiller.exe`, `CoordPicker.exe`, `config/`, `data/`
 - `GreenTest.exe` is no longer required and is not included in the latest portable ZIP.
-- Release asset digest from GitHub: `sha256:29d6279e37082cd3302d331255a7b71658ff704ce4b1f245e36fdf9148e783c2`
+- Release asset digest from GitHub: `sha256:b07db1edebbc8391ffb8e33980262185e9cbe15db3b809bcca45f0ee34eb8665`
 
 ### Latest Commits
+- `f2889ee` — `Refine procedure workflow drafts and source scanning`
+- `ad0770d` — `Update handoff for combined app release [skip ci]`
 - `ad770c9` — `Combine coordinate mapper with procedure app`
-- `f15527f` — `Improve source form workflow and history restore`
-- `d0a65b6` — `Improve mapping and procedure workflows`
 
 ### Verification Completed For Latest Published Release
 - `python3 -m py_compile src/catalog.py src/config_loader.py src/excel_reader.py src/pdf_engine.py src/package_engine.py src/coord_picker.py src/main_app.py`
 - `python3 tests/procedure_package_smoke.py`
 - `python3 tests/sales_flow_smoke.py`
 - `git diff --cached --check` before commit.
-- GitHub Actions Windows build passed for run `26649523536`.
+- GitHub Actions Windows build passed for run `26667489012`.
 - Downloaded and inspected `FormFiller-portable.zip`:
   - `FormFiller.exe` present.
   - `CoordPicker.exe` present.
@@ -38,20 +38,32 @@ The app is local-only and offline. Do not add cloud sync, login, API validation,
 - Verified latest direct download redirects to the new tag.
 
 ### Latest Release Changes
+- Generate Package no longer duplicates `RM Code`, `Branch`, and `Date`; the top session row is the single source for generation.
+- Generate Package now has `Save Draft`; drafts and generated rows live together in a searchable History list inside `History / Settings`.
+- Procedure input fields are derived only from mapped fields used by the selected procedure, deduplicated and sorted by usage count. Labels show quiet usage counts such as `Name x4`.
+- Bulk Export import accepts CIS, IC, passport, or name. Match Result rows can be selected/unselected and can be sent to `Create Drafts` or `Generate Selected`.
+- Procedure Builder now supports `Duplicate Version`, `Sunset`, and `Delete` to make procedure version updates smoother.
+- Procedure Builder label changed from `DefaultOutputName` to `Output File Name`, with token insert buttons for client, date, and procedure. `{date}` now formats as `ddmmyy`, e.g. `300526`.
+- Source Forms can manage multiple form root folders. Selecting a root shows detected source form folders for that root.
+- Source Forms scan shows PDF status, `old forms` folder status, effective date, expiry date, mapping status, and last mapping edit.
+- Effective and expiry dates can be selected with a calendar button while still saving as text dates.
+- Coordinate Pointer form identity is now folder-search-first; mapping key/display/template folder are internal/auto-derived.
+- Coordinate Pointer no longer repeats clicked coordinate messages in the bottom status line because x/y already appear in the coordinate section.
+- Generated history payloads now include a form manifest with source form names, versions, PDF filename/path, mapping key, mapping edit date, and mapping field count.
 - Main app now has a `Coordinate Pointer` tab. The top `Mapping Editor` button and Source Forms `Open Mapping Editor` open the embedded coordinate mapper instead of treating CoordPicker as a separate workflow.
 - Generate/Work screen removes customer listbox and category controls. It now uses one `Search customer` field plus a dropdown result list, and procedure selection is narrowed by small tag checkboxes plus text search.
 - `Category`, `Add Category`, and `Edit Category` are removed from the user-facing workflow. Old `Category` data remains only as backward-compatible metadata for inferring tags on old procedures.
 - Generate/Work screen no longer shows `Recent Client History`. Existing history payload logic remains in the code for future reuse from a more suitable screen.
 - Procedure inputs panel is now titled `Client Default Information / Form Inputs`; default locked Excel fields and transaction/form inputs remain listed there before generation.
-- Procedure Builder now edits `Tags` and `DefaultOutputName`. New procedures default to `{client_name}_{date}_{procedure}`.
+- Procedure Builder now edits `Tags` and the user-facing `Output File Name`. New procedures default to `{client_name}_{date}_{procedure}`.
 - Output filename generation now supports placeholders:
   - `{client_name}` / `{client}`
-  - `{date}` as `dd_mm_yyyy`
+  - `{date}` as `ddmmyy`
   - `{yyyymmdd}`
   - `{procedure}` / `{procedure_code}`
   - Legacy `ClientName_Date_...` templates still work.
-- Source Forms tab now owns form-root scanning. User chooses a form root folder; the scan checks immediate subfolders only.
-- Folder scan identifies each subfolder as missing PDF, exactly one top-level PDF, or multiple top-level PDFs. PDFs inside nested folders such as `old/` are ignored.
+- Source Forms tab now owns multi-root form scanning. User chooses a configured form root; the scan checks immediate subfolders only.
+- Folder scan identifies each subfolder as missing PDF, exactly one top-level PDF, or multiple top-level PDFs. PDFs inside nested folders such as `old forms/` are ignored.
 - Coordinate mappings are now also saved to `mapping.json` inside the form subfolder, with `last_updated`, mapping key, template info, and field list. Existing central `config/forms.json` is still written for compatibility.
 - `config_loader.load_forms()` merges folder `mapping.json` files over central mappings, so the form folder can carry the latest mapping.
 - `EffectiveDate` / `ExpiryDate` behavior is still generation-time validation:
@@ -64,7 +76,7 @@ The app is local-only and offline. Do not add cloud sync, login, API validation,
 - `python3 tests/procedure_package_smoke.py`
 - `python3 tests/sales_flow_smoke.py`
 - `git diff --check -- HANDOFF.md src/config_loader.py src/coord_picker.py src/main_app.py src/package_engine.py`
-- Manual smoke: temporary form-root scan confirmed direct top-level PDF counting and ignored nested `old/` PDFs.
+- Manual smoke: temporary form-root scan confirmed direct top-level PDF counting and ignored nested `old forms/` PDFs.
 
 ### Current Architecture
 - Procedures are not stored as pre-combined PDFs.
@@ -72,14 +84,19 @@ The app is local-only and offline. Do not add cloud sync, login, API validation,
 - A Source Form is the real PDF/form folder plus one mapping key.
 - The generation engine dynamically combines latest active source forms.
 - Source form PDF paths can point to a folder; the app auto-picks exactly one top-level PDF in that folder.
-- Old form versions should be placed inside an `old/` subfolder inside that form folder.
+- Multiple form roots are supported through `forms_folders`; `forms_folder` remains the primary/backward-compatible root.
+- Old form versions should be placed inside an `old forms/` subfolder inside that form folder.
 - Source form folder paths are valid only when exactly one top-level PDF is present.
+- Folder scan reports missing `old forms/` folders but does not auto-create or move files.
 - SourceFormCode/MappingKey/DisplayName remain internal identifiers for now, but the UI derives them from selected/scanned folders where possible.
 - Procedure tags are the user-facing way to narrow procedures. Tag matching is `Any` match; no exact/all-match mode is exposed.
 - `ExpiryDate` / `EffectiveDate` are validated before generation; expired/not-yet-effective forms block generation and near-expiry forms warn.
 - Coordinate overlay remains the main PDF strategy, so scanned/flat PDFs are supported by placing text over the PDF background.
 - CoordPicker is now embeddable as `CoordPickerFrame`; standalone `CoordPicker.exe` compatibility is retained.
 - Folder-level `mapping.json` is the preferred mapping location going forward, with central `forms.json` retained as compatibility storage.
+- Drafts and generated packages share `HistoryLog.xlsx`; rows carry a hidden `RestorePayload` for restore/reuse.
+- Generated history payloads now record a form manifest for the PDFs/mappings used at generation time.
+- Exact historical regeneration from archived old PDFs/mappings is not fully implemented yet; restoring a history row currently reuses the recorded inputs with the active catalog unless a future archived-asset replay flow is added.
 
 ### Current Excel Workbook Structure
 The current default workbook sheets are:
@@ -100,7 +117,7 @@ Important details:
 - `default_accounts` supports `common_name`, `account_type`, `account_number`, primary holder, and joint holders.
 - Related Account dropdown uses `common_name` so the user can choose the correct UT/Bond/SI/account relationship.
 - CIS is used for matching and logs, but should not appear in output filenames.
-- `HistoryLog.xlsx` now keeps a hidden `RestorePayload` column for richer restore/reuse from recent client history while preserving the visible history columns.
+- `HistoryLog.xlsx` now keeps a hidden `RestorePayload` column for drafts, generated history restore, and form manifest metadata while preserving the visible history columns.
 
 ### Mapping Editor Decisions
 Current format choices:
@@ -140,12 +157,18 @@ Mapping Editor current behavior:
 - Clear Page and Clear All are available with confirmation.
 - Opening Mapping Editor from Source Forms now loads existing mapping first, so saving will not wipe previous mappings.
 - Embedded Coordinate Pointer saves to both central `forms.json` and the selected form folder's `mapping.json` when a folder is known.
+- Coordinate Pointer form identity is folder-search-first; mapping key/display/template folder fields are kept internal.
+- Coordinate Pointer does not repeat clicked x/y in the bottom status line because the coordinate fields already show it.
 
 ### Procedure Builder Decisions
 - User wants a left list of available source forms and a right list of procedure sequence.
 - Implemented searchable left source-form list, Add button, double-click add, Remove, Up, Down, Save.
 - Inactive source forms cannot be added to a procedure.
 - Adding/editing categories is removed. Procedures use tags for flexible filtering.
+- Duplicate Version creates a copied procedure with the next code/version and can mark the old procedure inactive.
+- Sunset marks an old procedure inactive without deleting it.
+- Delete is available for cleanup, but Sunset is preferred once a procedure has history.
+- `Output File Name` supports token buttons for `{client_name}`, `{date}`, and `{procedure}`; `{date}` is `ddmmyy`.
 - True drag-and-drop reorder is not implemented yet; current reorder uses Up/Down buttons.
 - Blank pages are now mainly auto-inserted after odd-page source PDFs.
 - Auto blank follows the previous page size/orientation.
@@ -191,11 +214,11 @@ The refreshed test folder:
 
 ### Known Gaps / Next Work
 - Verify the new combined app on the target Windows/bank PC.
-- Decide whether SourceFormCode/DisplayName/MappingKey should be fully hidden or just treated as internal auto-filled fields.
-- Recent history restore depends on new `RestorePayload` for full fidelity; current Work/Generate screen intentionally no longer shows recent history.
-- Bulk export currently prioritizes one same Procedure for the whole batch.
+- Exact historical regeneration from original old PDFs/mappings still needs an archived-asset copy/replay design.
+- Bulk export currently uses one selected Procedure for all selected rows.
+- Fuzzy name matches that return multiple candidates are marked `Need Review`; there is no candidate picker yet.
+- Bulk export can create drafts or generate selected rows, but does not yet choose per-client account rows before draft/generate.
 - Mixed procedure per client in one bulk batch remains deferred.
-- Account selection is implemented for the single-customer Generate tab; bulk export does not yet choose per-client account rows.
 - True drag-and-drop in Procedure Builder is still a future improvement.
 - Search primarily loads customer rows from customer sheets; account-only joint holder search may still need improvement if a joint holder exists only in `default_accounts` and not `default_clients`.
 - Default-field write-back updates one existing matched row; it is not a full Excel data-entry system.
@@ -209,6 +232,7 @@ The refreshed test folder:
 - `tech_stack.md` is locally modified outside this combined-app change set; review before committing all files.
 - Untracked local files exist and should not be touched unless user asks:
   - `docs/business_opportunity.md`
+  - `mockups/`
   - `review by claude and codex.md`
 
 ---
