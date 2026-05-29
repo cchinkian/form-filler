@@ -9,35 +9,35 @@ Core flow:
 The app is local-only and offline. Do not add cloud sync, login, API validation, CRM, manager approval, OCR, email/WhatsApp sending, SQLite/server database, or online form update features for Version 1.
 
 ### Latest Published Release
-- Release tag: `procedure-automation-source-history-update-2026-05-27`
-- Release page: https://github.com/cchinkian/form-filler/releases/tag/procedure-automation-source-history-update-2026-05-27
+- Release tag: `combined-coordinate-tags-folder-scan-2026-05-30`
+- Release page: https://github.com/cchinkian/form-filler/releases/tag/combined-coordinate-tags-folder-scan-2026-05-30
 - Latest app ZIP: https://github.com/cchinkian/form-filler/releases/latest/download/FormFiller-portable.zip
-- Latest synthetic test work folder ZIP: https://github.com/cchinkian/form-filler/releases/latest/download/FormFiller_Test_WorkFolder_20260527.zip
-- GitHub Windows build: `26522180335`
+- Latest sample work folder ZIP remains from the previous release: https://github.com/cchinkian/form-filler/releases/download/procedure-automation-source-history-update-2026-05-27/FormFiller_Test_WorkFolder_20260527.zip
+- GitHub Windows build: `26649523536`
 - Latest release assets:
   - `FormFiller-portable.zip` — contains `FormFiller.exe`, `CoordPicker.exe`, `config/`, `data/`
-- `FormFiller_Test_WorkFolder_20260527.zip` — refreshed sample work folder with 57 synthetic form folders
 - `GreenTest.exe` is no longer required and is not included in the latest portable ZIP.
-- Note: the combined-app/tag/folder-scan work below is local and not yet pushed/released as of this handoff.
+- Release asset digest from GitHub: `sha256:29d6279e37082cd3302d331255a7b71658ff704ce4b1f245e36fdf9148e783c2`
 
 ### Latest Commits
+- `ad770c9` — `Combine coordinate mapper with procedure app`
 - `f15527f` — `Improve source form workflow and history restore`
 - `d0a65b6` — `Improve mapping and procedure workflows`
-- `a6417c6` — `Fix review findings for workflow update`
 
 ### Verification Completed For Latest Published Release
 - `python3 -m py_compile src/catalog.py src/config_loader.py src/excel_reader.py src/pdf_engine.py src/package_engine.py src/coord_picker.py src/main_app.py`
 - `python3 tests/procedure_package_smoke.py`
 - `python3 tests/sales_flow_smoke.py`
-- `git diff --check`
-- GitHub Actions Windows build passed for run `26522180335`.
+- `git diff --cached --check` before commit.
+- GitHub Actions Windows build passed for run `26649523536`.
 - Downloaded and inspected `FormFiller-portable.zip`:
   - `FormFiller.exe` present.
   - `CoordPicker.exe` present.
   - `GreenTest.exe` absent.
   - `config/settings.json` and `data/clients_template.xlsx` present.
+- Verified latest direct download redirects to the new tag.
 
-### Current Local Changes Not Yet Released
+### Latest Release Changes
 - Main app now has a `Coordinate Pointer` tab. The top `Mapping Editor` button and Source Forms `Open Mapping Editor` open the embedded coordinate mapper instead of treating CoordPicker as a separate workflow.
 - Generate/Work screen removes customer listbox and category controls. It now uses one `Search customer` field plus a dropdown result list, and procedure selection is narrowed by small tag checkboxes plus text search.
 - `Category`, `Add Category`, and `Edit Category` are removed from the user-facing workflow. Old `Category` data remains only as backward-compatible metadata for inferring tags on old procedures.
@@ -190,7 +190,7 @@ The refreshed test folder:
 - Includes sample generated PDFs.
 
 ### Known Gaps / Next Work
-- Build and release the new combined-app version after code review, then update the release/download links above.
+- Verify the new combined app on the target Windows/bank PC.
 - Decide whether SourceFormCode/DisplayName/MappingKey should be fully hidden or just treated as internal auto-filled fields.
 - Recent history restore depends on new `RestorePayload` for full fidelity; current Work/Generate screen intentionally no longer shows recent history.
 - Bulk export currently prioritizes one same Procedure for the whole batch.
