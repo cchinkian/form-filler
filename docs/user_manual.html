@@ -1,0 +1,186 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>PDF Procedure Automation User Manual</title>
+  <style>
+    body {
+      margin: 0;
+      background: #f4f4f4;
+      color: #151515;
+      font-family: "Segoe UI", Arial, sans-serif;
+      line-height: 1.5;
+    }
+    main {
+      max-width: 1040px;
+      margin: 0 auto;
+      background: #ffffff;
+      padding: 28px 34px 48px;
+      box-shadow: 0 0 0 1px #d8d8d8;
+    }
+    h1 {
+      margin: 0 0 4px;
+      font-size: 28px;
+    }
+    h2 {
+      margin-top: 34px;
+      padding-top: 18px;
+      border-top: 1px solid #d8d8d8;
+      font-size: 21px;
+    }
+    h3 {
+      margin-top: 22px;
+      font-size: 16px;
+    }
+    img {
+      display: block;
+      max-width: 100%;
+      border: 1px solid #bdbdbd;
+      margin: 12px 0 18px;
+    }
+    code {
+      background: #eeeeee;
+      padding: 1px 4px;
+      border-radius: 3px;
+    }
+    .meta {
+      color: #555555;
+      margin-bottom: 18px;
+    }
+    .flow {
+      background: #f1f5f8;
+      border-left: 4px solid #37769d;
+      padding: 10px 12px;
+      margin: 12px 0 22px;
+      font-family: Consolas, monospace;
+    }
+    .note {
+      background: #fff8e5;
+      border-left: 4px solid #c78a00;
+      padding: 10px 12px;
+      margin: 14px 0;
+    }
+    li {
+      margin: 4px 0;
+    }
+  </style>
+</head>
+<body>
+<main>
+  <h1>PDF Procedure Automation User Manual</h1>
+  <div class="meta">Last updated: 30 May 2026</div>
+  <p>This guide explains the daily workflow for the offline PDF Procedure Automation Tool.</p>
+  <div class="flow">Search customer -> choose procedure -> choose related account -> key in missing form inputs -> generate PDF package -> review history</div>
+
+  <h2>1. Start The App</h2>
+  <ol>
+    <li>Open <code>FormFiller.exe</code>.</li>
+    <li>Check <code>RM Code</code>, <code>Branch</code>, and <code>Date</code>.</li>
+    <li>Leave <code>Branch</code> blank if no branch should be printed.</li>
+    <li>Use <code>Output</code> to open the generated PDF folder.</li>
+    <li>Use <code>User Manual</code> to open this guide.</li>
+    <li>Use <code>Reload</code> after changing Excel/config/form folders.</li>
+  </ol>
+
+  <h2>2. Generate One PDF Package</h2>
+  <img src="manual_images/01_generate_package.png" alt="Generate Package tab">
+  <ol>
+    <li>Go to <code>Generate Package</code>.</li>
+    <li>Search customer by name, IC, passport, or CIS.</li>
+    <li>Select the correct customer from the dropdown.</li>
+    <li>Search/select the procedure. Tags are optional filters, and tag matching is <code>Any</code>.</li>
+    <li>Select the related account if the procedure needs UT/Bond/SI/account information.</li>
+    <li>Review <code>Procedure Structure</code> to confirm the form sequence.</li>
+    <li>Review <code>Client Default Information / Form Inputs</code>. Default Excel fields show only if used by the selected procedure. <code>x2</code>, <code>x4</code>, etc. means usage count in this procedure.</li>
+    <li>Click <code>Save Draft</code> if the package is not ready.</li>
+    <li>Click <code>Generate PDF Package</code> when ready.</li>
+  </ol>
+  <div class="note">Expired source forms block generation. Forms expiring soon show a warning. Source folders with missing PDF or multiple direct PDFs should be corrected in <code>Source Forms</code>.</div>
+
+  <h2>3. Bulk Export</h2>
+  <img src="manual_images/02_bulk_export.png" alt="Bulk Export tab">
+  <ol>
+    <li>Go to <code>Bulk Export</code>.</li>
+    <li>Search/select one procedure for the batch.</li>
+    <li>Paste one CIS, IC, passport, or customer name per line.</li>
+    <li>Click <code>Analyze</code>.</li>
+    <li>Review <code>Match Result</code>. Double-click a row to include or exclude it.</li>
+    <li>Click <code>Create Drafts</code> if rows still need manual input.</li>
+    <li>Click <code>Generate Selected</code> only when selected rows are ready.</li>
+  </ol>
+  <p>Bulk currently uses one selected procedure for all rows. Use separate batches if customers need different procedures.</p>
+
+  <h2>4. Procedure Builder</h2>
+  <img src="manual_images/03_procedure_builder.png" alt="Procedure Builder tab">
+  <ol>
+    <li>Go to <code>Procedure Builder</code>.</li>
+    <li>Select an existing procedure or click <code>New</code>.</li>
+    <li>Set procedure code, display name, tags, version, and output file name.</li>
+    <li>Use output filename tokens: <code>{client_name}</code>, <code>{date}</code> as ddmmyy, and <code>{procedure}</code>.</li>
+    <li>Add source forms from the left list into the right sequence.</li>
+    <li>Use <code>Up</code> / <code>Down</code> to arrange the sequence.</li>
+    <li>Keep auto blank page insertion on unless there is a reason to override it.</li>
+    <li>Click <code>Save</code>.</li>
+  </ol>
+  <p>Use <code>Duplicate Version</code> before amending an old procedure. Use <code>Sunset</code> to make an old procedure inactive. Use <code>Delete</code> only for cleanup where no history depends on the procedure.</p>
+
+  <h2>5. Source Forms</h2>
+  <img src="manual_images/04_source_forms.png" alt="Source Forms tab">
+  <ol>
+    <li>Go to <code>Source Forms</code>.</li>
+    <li>Add one or more form root folders.</li>
+    <li>Select a root folder and click <code>Scan</code>.</li>
+    <li>Review PDF status, old forms folder status, effective date, expiry date, mapping status, and last mapping edit.</li>
+    <li>Select a source form to edit folder/path, version, dates, remarks, and active status.</li>
+    <li>Click <code>Open Mapping Editor</code> to map fields.</li>
+  </ol>
+  <div class="note">Each active form subfolder should contain exactly one current PDF directly inside the folder. Old PDF versions should be placed inside <code>old forms/</code>. Nested PDFs are ignored by the active scan.</div>
+
+  <h2>6. Coordinate Pointer</h2>
+  <img src="manual_images/05_coordinate_pointer.png" alt="Coordinate Pointer tab">
+  <ol>
+    <li>Go to <code>Coordinate Pointer</code>.</li>
+    <li>Search/select the form folder.</li>
+    <li>Open the folder PDF.</li>
+    <li>Click on the PDF preview to capture <code>x</code> and <code>y</code>.</li>
+    <li>Select field ID / Excel field, source, format, font size, alignment, and box width.</li>
+    <li>Click <code>Add Field</code> or <code>Update</code>.</li>
+    <li>Save the mapping.</li>
+  </ol>
+  <p>The preferred mapping location is <code>mapping.json</code> inside the selected form folder. The central mapping config is still written for compatibility.</p>
+
+  <h2>7. History / Settings</h2>
+  <img src="manual_images/06_history_settings.png" alt="History and Settings tab">
+  <ol>
+    <li>Go to <code>History / Settings</code>.</li>
+    <li>Search by client, CIS, procedure, or status.</li>
+    <li>Select a row.</li>
+    <li>Click <code>Open / Restore</code> or double-click the row.</li>
+  </ol>
+  <p>Drafts and generated packages are stored together. Restoring loads saved customer, procedure, account, and manual inputs. Generated history records include a form manifest showing which source PDFs/mappings were used.</p>
+  <div class="note">Current limitation: exact regeneration from archived old PDFs is not fully automated yet. The app can restore saved inputs, but final regeneration still depends on the active catalog unless an archived replay flow is added later.</div>
+
+  <h2>8. Common Checks Before Generating</h2>
+  <ol>
+    <li>Customer selected is correct.</li>
+    <li>Related account is correct.</li>
+    <li>Procedure structure has the expected forms.</li>
+    <li>Required inputs are filled.</li>
+    <li>Source Forms scan has no missing/multiple active PDF issues.</li>
+    <li>Expiry date warnings are resolved or accepted.</li>
+    <li>Output folder is correct.</li>
+  </ol>
+
+  <h2>9. Troubleshooting</h2>
+  <h3>Excel workbook cannot be edited</h3>
+  <p>Close <code>clients.xlsx</code> and try again. The app makes backups before writing default-field edits.</p>
+  <h3>Source form cannot generate</h3>
+  <p>Check for missing PDF, multiple direct PDFs, expired form, not-yet-effective form, or missing mapping in <code>Source Forms</code>.</p>
+  <h3>Field appears in wrong position</h3>
+  <p>Open <code>Coordinate Pointer</code>, select the form folder, adjust the field position, and save mapping again.</p>
+  <h3>Bulk row is not ready</h3>
+  <p>Create a draft first. Restore the draft from <code>History / Settings</code> and complete the missing inputs manually.</p>
+</main>
+</body>
+</html>

@@ -1,0 +1,2109 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>PDF Procedure Automation - Tryable UI Draft</title>
+  <style>
+    :root {
+      --bg: #efefef;
+      --panel: #f7f7f7;
+      --field: #ffffff;
+      --line: #a8a8a8;
+      --soft: #d0d0d0;
+      --text: #111111;
+      --muted: #5a5a5a;
+      --select: #0a63c7;
+      --ok: #0c6b3d;
+      --warn: #8c6100;
+      --bad: #9b2424;
+      --mono: Consolas, "Courier New", monospace;
+      --sans: "Segoe UI", Tahoma, Arial, sans-serif;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      background: #dcdcdc;
+      color: var(--text);
+      font-family: var(--sans);
+      font-size: 12px;
+    }
+
+    button,
+    input,
+    select,
+    textarea {
+      font: inherit;
+    }
+
+    button {
+      min-height: 24px;
+      border: 1px solid #9b9b9b;
+      border-radius: 0;
+      background: linear-gradient(#ffffff, #e6e6e6);
+      color: var(--text);
+      padding: 2px 9px;
+      cursor: pointer;
+      white-space: nowrap;
+    }
+
+    button:hover {
+      border-color: #666666;
+      background: linear-gradient(#ffffff, #dddddd);
+    }
+
+    input,
+    select,
+    textarea {
+      width: 100%;
+      min-height: 23px;
+      border: 1px solid var(--line);
+      background: var(--field);
+      color: var(--text);
+      padding: 2px 4px;
+    }
+
+    textarea {
+      resize: none;
+      font-family: var(--mono);
+    }
+
+    label {
+      display: inline-flex;
+      align-items: center;
+      min-height: 23px;
+    }
+
+    .app {
+      width: 1120px;
+      min-height: 760px;
+      margin: 10px auto;
+      border: 1px solid #7e7e7e;
+      background: var(--bg);
+    }
+
+    .top {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 12px;
+      align-items: center;
+      padding: 10px 12px 4px;
+    }
+
+    .title {
+      font-size: 22px;
+      font-weight: 700;
+      line-height: 1.1;
+    }
+
+    .top-actions {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+    }
+
+    .session {
+      display: grid;
+      grid-template-columns: 54px 108px 42px 130px 32px 90px minmax(0, 1fr);
+      gap: 6px;
+      align-items: center;
+      padding: 6px 12px 8px;
+    }
+
+    .tabs {
+      display: flex;
+      align-items: flex-end;
+      gap: 1px;
+      padding: 0 10px;
+      border-bottom: 1px solid var(--line);
+    }
+
+    .tab {
+      min-height: 26px;
+      border: 1px solid var(--line);
+      border-bottom: 0;
+      background: #e8e8e8;
+      padding: 4px 8px;
+    }
+
+    .tab.active {
+      position: relative;
+      top: 1px;
+      background: var(--panel);
+      font-weight: 600;
+    }
+
+    .view {
+      display: none;
+      min-height: 615px;
+      padding: 10px;
+      background: var(--panel);
+    }
+
+    .view.active {
+      display: block;
+    }
+
+    fieldset {
+      margin: 0;
+      border: 1px solid var(--soft);
+      background: var(--panel);
+      padding: 8px;
+    }
+
+    legend {
+      padding: 0 4px;
+      font-weight: 600;
+    }
+
+    .split-generate {
+      display: grid;
+      grid-template-columns: 57% 43%;
+      gap: 10px;
+      align-items: start;
+    }
+
+    .split-two {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+      align-items: start;
+    }
+
+    .split-source {
+      display: grid;
+      grid-template-columns: 48% 52%;
+      gap: 10px;
+      align-items: start;
+    }
+
+    .coord-grid {
+      display: grid;
+      grid-template-columns: 310px minmax(0, 1fr);
+      gap: 10px;
+      align-items: start;
+    }
+
+    .coord-side {
+      display: grid;
+      gap: 8px;
+    }
+
+    .column {
+      display: grid;
+      gap: 8px;
+    }
+
+    .row {
+      display: grid;
+      grid-template-columns: 112px minmax(0, 1fr);
+      gap: 6px;
+      align-items: center;
+      margin-bottom: 5px;
+    }
+
+    .row.search {
+      grid-template-columns: 110px minmax(0, 1fr);
+    }
+
+    .row.customer-picker {
+      grid-template-columns: 110px minmax(0, 1fr) 260px;
+    }
+
+    .row.actions {
+      grid-template-columns: 112px minmax(0, 1fr) auto auto;
+    }
+
+    .row.session-row {
+      grid-template-columns: 112px 120px 44px 130px 32px 90px;
+    }
+
+    .row.source-path {
+      grid-template-columns: 112px minmax(0, 1fr) auto auto;
+    }
+
+    .row.coord-actions {
+      grid-template-columns: 112px minmax(0, 1fr) auto;
+    }
+
+    .coord-pair {
+      display: grid;
+      grid-template-columns: 24px 76px 24px 76px;
+      gap: 6px;
+      align-items: center;
+      margin-bottom: 5px;
+    }
+
+    .listbox,
+    .customer-list {
+      border: 1px solid var(--line);
+      background: var(--field);
+      font-family: var(--mono);
+      font-size: 12px;
+      overflow: auto;
+    }
+
+    .customer-list {
+      height: 102px;
+      margin-top: 5px;
+    }
+
+    .listbox {
+      min-height: 96px;
+    }
+
+    .list-line {
+      min-height: 19px;
+      padding: 2px 4px;
+      white-space: nowrap;
+    }
+
+    .customer-line {
+      display: grid;
+      grid-template-columns: minmax(140px, 1fr) 138px 150px 110px;
+      gap: 8px;
+      min-height: 19px;
+      padding: 2px 4px;
+      white-space: nowrap;
+    }
+
+    .selected {
+      background: var(--select);
+      color: #ffffff;
+    }
+
+    .selected-label {
+      font-weight: 600;
+    }
+
+    .tag-box {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 4px;
+      align-items: center;
+      min-height: 24px;
+      border: 1px solid var(--soft);
+      background: #fbfbfb;
+      padding: 3px;
+    }
+
+    .tag {
+      min-height: 18px;
+      border: 1px solid #c8c8c8;
+      background: #f4f4f4;
+      color: #333333;
+      padding: 1px 7px;
+      cursor: pointer;
+      user-select: none;
+    }
+
+    .tag.active {
+      border-color: #37769d;
+      background: #dcecf8;
+      color: #143d59;
+    }
+
+    .statusline {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 5px;
+      margin-top: 5px;
+    }
+
+    .status {
+      display: inline-flex;
+      align-items: center;
+      min-height: 20px;
+      border: 1px solid var(--soft);
+      background: #ffffff;
+      padding: 1px 6px;
+      white-space: nowrap;
+    }
+
+    .status.ok {
+      color: var(--ok);
+      border-color: #83b393;
+      background: #eef8f1;
+    }
+
+    .status.warn {
+      color: var(--warn);
+      border-color: #cdb072;
+      background: #fff6dd;
+    }
+
+    .status.bad {
+      color: var(--bad);
+      border-color: #c68c8c;
+      background: #fff0f0;
+    }
+
+    .small {
+      color: var(--muted);
+      font-size: 11px;
+      margin-top: 4px;
+    }
+
+    .structure {
+      height: 214px;
+      padding: 5px;
+    }
+
+    .history-list {
+      height: 82px;
+      padding: 4px;
+    }
+
+    .inputs-grid {
+      display: grid;
+      grid-template-columns: 130px minmax(0, 1fr) 74px;
+      gap: 5px;
+      align-items: center;
+      padding: 4px 0;
+    }
+
+    .field-table input {
+      min-height: 21px;
+      padding: 1px 3px;
+    }
+
+    .button-row {
+      display: flex;
+      justify-content: flex-end;
+      gap: 6px;
+      margin-top: 6px;
+    }
+
+    .bulk-grid {
+      display: grid;
+      grid-template-columns: 34% 66%;
+      gap: 10px;
+      margin-top: 8px;
+    }
+
+    .builder-grid {
+      display: grid;
+      grid-template-columns: 39% 61%;
+      gap: 10px;
+      align-items: start;
+    }
+
+    .builder-items {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+      margin-top: 6px;
+    }
+
+    .builder-list {
+      height: 282px;
+      padding: 4px;
+    }
+
+    .controls-row {
+      display: flex;
+      gap: 6px;
+      margin-top: 7px;
+      flex-wrap: wrap;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      table-layout: fixed;
+      background: #ffffff;
+      border: 1px solid var(--line);
+    }
+
+    th,
+    td {
+      border-bottom: 1px solid #dedede;
+      padding: 3px 5px;
+      text-align: left;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    th {
+      background: #e6e6e6;
+      font-weight: 600;
+    }
+
+    .scan-toolbar {
+      display: grid;
+      grid-template-columns: 94px minmax(0, 1fr) auto auto auto;
+      gap: 6px;
+      align-items: center;
+      margin-bottom: 8px;
+    }
+
+    .root-list {
+      height: 58px;
+      padding: 3px;
+      margin-bottom: 7px;
+    }
+
+    .source-list {
+      height: 244px;
+      padding: 4px;
+      margin-top: 8px;
+    }
+
+    .pdf-shell {
+      height: 570px;
+      border: 1px solid var(--line);
+      background: #cfcfcf;
+      overflow: auto;
+      padding: 14px;
+    }
+
+    .pdf-page {
+      position: relative;
+      width: 720px;
+      height: 1020px;
+      margin: 0 auto;
+      border: 1px solid #8c8c8c;
+      background:
+        linear-gradient(#ffffff, #ffffff) padding-box,
+        repeating-linear-gradient(0deg, transparent, transparent 31px, #f3f3f3 32px),
+        repeating-linear-gradient(90deg, transparent, transparent 31px, #f3f3f3 32px);
+      box-shadow: 0 2px 10px rgba(0, 0, 0, 0.18);
+      cursor: crosshair;
+    }
+
+    .pdf-logo {
+      position: absolute;
+      top: 54px;
+      right: 54px;
+      width: 122px;
+      height: 46px;
+      display: grid;
+      place-items: center;
+      background: #7dd1dd;
+      color: #0a5fa3;
+      font-weight: 800;
+      font-size: 30px;
+      transform: skew(-8deg);
+    }
+
+    .pdf-heading {
+      position: absolute;
+      top: 142px;
+      left: 112px;
+      right: 112px;
+      text-align: center;
+      font-size: 22px;
+      font-weight: 800;
+      line-height: 1.18;
+    }
+
+    .pdf-body {
+      position: absolute;
+      top: 260px;
+      left: 78px;
+      right: 78px;
+      color: #222222;
+      font-size: 15px;
+      line-height: 1.55;
+    }
+
+    .pdf-field {
+      position: absolute;
+      min-width: 58px;
+      height: 22px;
+      border: 2px solid #0066ff;
+      background: rgba(0, 102, 255, 0.06);
+    }
+
+    .coord-marker {
+      position: absolute;
+      width: 10px;
+      height: 10px;
+      margin-left: -5px;
+      margin-top: -5px;
+      border: 2px solid #d60000;
+      border-radius: 50%;
+      background: #ffffff;
+      pointer-events: none;
+    }
+
+    .hidden {
+      display: none;
+    }
+
+    .footer {
+      min-height: 24px;
+      border-top: 1px solid var(--line);
+      background: #e9e9e9;
+      padding: 4px 12px;
+    }
+  </style>
+</head>
+<body>
+  <main class="app">
+    <div class="top">
+      <div class="title">PDF Procedure Automation</div>
+      <div class="top-actions">
+        <button type="button">Output</button>
+        <button type="button" id="mappingShortcut">Mapping Editor</button>
+        <button type="button">User Manual</button>
+        <button type="button">Settings</button>
+        <button type="button" id="reloadData">Reload</button>
+      </div>
+    </div>
+
+    <div class="session">
+      <label for="rmCode">RM Code</label>
+      <select id="rmCode">
+        <option>RM001</option>
+        <option>RM002</option>
+      </select>
+      <label for="branch">Branch</label>
+      <select id="branch">
+        <option></option>
+        <option>Main</option>
+        <option>KL</option>
+      </select>
+      <label for="dateField">Date</label>
+      <input id="dateField" value="29/05/2026">
+      <span></span>
+    </div>
+
+    <nav class="tabs">
+      <button class="tab active" type="button" data-tab="generate">Generate Package</button>
+      <button class="tab" type="button" data-tab="bulk">Bulk Export</button>
+      <button class="tab" type="button" data-tab="builder">Procedure Builder</button>
+      <button class="tab" type="button" data-tab="sources">Source Forms</button>
+      <button class="tab" type="button" data-tab="coordinate">Coordinate Pointer</button>
+      <button class="tab" type="button" data-tab="history">History / Settings</button>
+    </nav>
+
+    <section class="view active" id="tab-generate">
+      <div class="split-generate">
+        <div class="column">
+          <div>
+            <div class="row customer-picker">
+              <label for="customerSearch">Search customer</label>
+              <input id="customerSearch" value="Mary Lee Sample" placeholder="Name / IC / passport / CIS">
+              <select id="customerDropdown"></select>
+            </div>
+          </div>
+
+          <div class="selected-label" id="selectedCustomerLabel">Selected: Mary Lee Sample</div>
+
+          <fieldset>
+            <legend>Procedure</legend>
+            <div class="row">
+              <label for="procedureSearch">Search</label>
+              <input id="procedureSearch" placeholder="Code, name, or tag">
+            </div>
+            <div class="row">
+              <label>Tags</label>
+              <div class="tag-box" id="tagBox"></div>
+            </div>
+            <div class="row actions">
+              <label for="procedureSelect">Procedure</label>
+              <select id="procedureSelect"></select>
+              <button type="button">Add Procedure</button>
+              <button type="button">Edit</button>
+            </div>
+            <div class="statusline" id="filterSummary"></div>
+          </fieldset>
+
+          <fieldset>
+            <legend>Related Account</legend>
+            <div class="row">
+              <label for="accountSelect">Account</label>
+              <select id="accountSelect"></select>
+            </div>
+            <div class="statusline" id="accountSummary"></div>
+          </fieldset>
+
+          <div class="button-row">
+            <button type="button">Save Draft</button>
+            <button type="button" id="generateButton">Generate PDF Package</button>
+          </div>
+        </div>
+
+        <div class="column">
+          <fieldset>
+            <legend>Procedure Structure</legend>
+            <div class="listbox structure" id="procedureStructure"></div>
+          </fieldset>
+
+          <fieldset>
+            <legend>Client Default Information</legend>
+            <table class="field-table">
+              <thead>
+                <tr>
+                  <th style="width: 32%">Column</th>
+                  <th style="width: 48%">Value</th>
+                  <th style="width: 20%">Action</th>
+                </tr>
+              </thead>
+              <tbody id="defaultInfoRows"></tbody>
+            </table>
+          </fieldset>
+
+          <fieldset>
+            <legend>Form Inputs To Key In</legend>
+            <table class="field-table">
+              <thead>
+                <tr>
+                  <th style="width: 32%">Column</th>
+                  <th style="width: 48%">Value</th>
+                  <th style="width: 20%">Required</th>
+                </tr>
+              </thead>
+              <tbody id="formInputRows"></tbody>
+            </table>
+          </fieldset>
+        </div>
+      </div>
+    </section>
+
+    <section class="view" id="tab-bulk">
+      <div class="row">
+        <label for="bulkProcedureSearch">Search</label>
+        <input id="bulkProcedureSearch" placeholder="Procedure code, name, or tag">
+      </div>
+      <div class="row">
+        <label>Tags</label>
+        <div class="tag-box" id="bulkTagBox"></div>
+      </div>
+      <div class="row actions">
+        <label for="bulkProcedure">Procedure</label>
+        <select id="bulkProcedure"></select>
+        <button type="button" id="bulkAnalyze">Analyze List</button>
+        <button type="button">Create Drafts</button>
+        <button type="button">Generate Selected</button>
+      </div>
+      <div class="bulk-grid">
+        <fieldset>
+          <legend>Identifier List</legend>
+          <textarea id="bulkIdentifiers" rows="22">CIS002
+CIS001
+CIS003
+850202105678
+Tan Sample</textarea>
+          <div class="button-row">
+            <button type="button">Import Excel / Text List</button>
+          </div>
+          <div class="small">One CIS, IC, passport, or name per line. Bulk can create drafts when inputs/account choices need review.</div>
+        </fieldset>
+        <fieldset>
+          <legend>Match Result</legend>
+          <table>
+            <thead>
+              <tr>
+                <th style="width: 12%">Use</th>
+                <th style="width: 24%">Identifier</th>
+                <th style="width: 36%">Customer</th>
+                <th style="width: 28%">Status</th>
+              </tr>
+            </thead>
+            <tbody id="bulkMatchRows"></tbody>
+          </table>
+        </fieldset>
+      </div>
+    </section>
+
+    <section class="view" id="tab-builder">
+      <div class="row actions">
+        <label for="builderProcedure">Procedure</label>
+        <select id="builderProcedure"></select>
+        <button type="button">New</button>
+        <button type="button">Duplicate Version</button>
+        <button type="button">Sunset</button>
+        <button type="button">Delete</button>
+        <button type="button">Save</button>
+      </div>
+      <div class="builder-grid">
+        <fieldset>
+          <legend>Procedure Details</legend>
+          <div class="row">
+            <label for="builderCode">ProcedureCode</label>
+            <input id="builderCode">
+          </div>
+          <div class="row">
+            <label for="builderName">DisplayName</label>
+            <input id="builderName">
+          </div>
+          <div class="row">
+            <label for="builderTags">Tags</label>
+            <input id="builderTags">
+          </div>
+          <div class="row">
+            <label for="builderVersion">Version</label>
+            <input id="builderVersion">
+          </div>
+          <div class="row">
+            <label for="builderOutput">Output File Name</label>
+            <input id="builderOutput">
+          </div>
+          <div class="controls-row">
+            <button type="button" data-token="{client_name}">+ Client</button>
+            <button type="button" data-token="{date}">+ Date</button>
+            <button type="button" data-token="{procedure}">+ Procedure</button>
+            <button type="button" data-token="({procedure})">+ (Procedure)</button>
+          </div>
+          <div class="row">
+            <label>Preview filename</label>
+            <input id="builderOutputPreview" readonly>
+          </div>
+          <div class="row">
+            <label for="builderDesc">Description</label>
+            <input id="builderDesc">
+          </div>
+          <div class="row">
+            <label for="builderRemarks">Remarks</label>
+            <input id="builderRemarks">
+          </div>
+          <label><input type="checkbox" checked style="width:auto"> Active</label><br>
+          <label><input type="checkbox" checked style="width:auto"> Auto insert blank page after odd-page PDFs</label>
+          <div class="small">Use {client_name} for cleaned client name, {date} for ddmmyy, and {procedure} for procedure name. Special characters are removed before output.</div>
+        </fieldset>
+
+        <fieldset>
+          <legend>Package Items</legend>
+          <div class="builder-items">
+            <fieldset>
+              <legend>Available Source Forms</legend>
+              <input id="sourceFilter" placeholder="Search source form">
+              <div class="listbox builder-list" id="availableSources"></div>
+            </fieldset>
+            <fieldset>
+              <legend>Procedure Sequence</legend>
+              <div class="listbox builder-list" id="builderSequence"></div>
+            </fieldset>
+          </div>
+          <div class="controls-row">
+            <button type="button">Add &gt;</button>
+            <button type="button">Remove</button>
+            <button type="button">Up</button>
+            <button type="button">Down</button>
+            <button type="button" style="margin-left:auto">Advanced: Add Manual Blank</button>
+          </div>
+        </fieldset>
+      </div>
+    </section>
+
+    <section class="view" id="tab-sources">
+      <div class="split-source">
+        <div class="column">
+          <fieldset>
+            <legend>Form Root Folders</legend>
+            <div class="listbox root-list" id="rootList"></div>
+            <div class="scan-toolbar">
+              <label for="rootFolder">Selected Root</label>
+              <input id="rootFolder" value="No folder selected">
+              <button type="button" id="chooseFolder">Add Folder</button>
+              <button type="button" id="scanSelectedRoot">Scan Selected</button>
+              <button type="button" id="scanAllRoots">Scan All</button>
+              <button type="button" id="uploadFolder">Upload</button>
+              <input class="hidden" id="folderUpload" type="file" webkitdirectory multiple>
+            </div>
+            <table>
+              <thead>
+                <tr>
+                  <th style="width: 24%">Root</th>
+                  <th style="width: 25%">Form Folder</th>
+                  <th style="width: 18%">PDF Status</th>
+                  <th style="width: 14%">Old Forms</th>
+                  <th style="width: 19%">Mapping / Updated</th>
+                </tr>
+              </thead>
+              <tbody id="scanRows"></tbody>
+            </table>
+            <div class="statusline" id="scanSummary"></div>
+            <div class="small">Each added root can be scanned. Only one direct top-level PDF inside each form folder counts; PDFs inside old forms or other nested folders are ignored.</div>
+          </fieldset>
+
+          <fieldset>
+            <legend>Detected Source Forms</legend>
+            <div class="listbox source-list" id="sourceList"></div>
+            <div class="button-row">
+              <button type="button">Auto Detect Folders</button>
+              <button type="button">New Source Form</button>
+            </div>
+          </fieldset>
+        </div>
+
+        <fieldset>
+          <legend>Source Form Details</legend>
+          <div class="row">
+            <label for="sourceFolderName">Form Folder</label>
+            <input id="sourceFolderName">
+          </div>
+          <div class="row">
+            <label for="sourceVersion">Version</label>
+            <input id="sourceVersion">
+          </div>
+          <div class="row source-path">
+            <label for="sourcePath">Detected PDF</label>
+            <input id="sourcePath">
+              <button type="button">Browse Folder</button>
+              <button type="button">Open PDF</button>
+            </div>
+          <div class="row">
+            <label for="sourceEff">EffectiveDate</label>
+            <input id="sourceEff" type="date">
+          </div>
+          <div class="row">
+            <label for="sourceExp">ExpiryDate</label>
+            <input id="sourceExp" type="date">
+          </div>
+          <div class="row">
+            <label for="sourceRemarks">Remarks</label>
+            <input id="sourceRemarks">
+          </div>
+          <label><input type="checkbox" checked style="width:auto"> Active</label>
+          <div class="button-row">
+            <button type="button">Save Source Form</button>
+            <button type="button" id="sourceMappingShortcut">Open Mapping Editor</button>
+            <button type="button">Open PDF</button>
+          </div>
+          <div class="statusline" id="sourceDetailStatus"></div>
+          <div class="small">Source code, display name, and mapping key are auto-derived from the selected folder in the real app.</div>
+        </fieldset>
+      </div>
+    </section>
+
+    <section class="view" id="tab-coordinate">
+      <div class="coord-grid">
+        <div class="coord-side">
+          <fieldset>
+            <legend>1. Form Folder</legend>
+            <div class="row">
+              <label for="coordSourceSearch">Search</label>
+              <input id="coordSourceSearch" placeholder="Type folder name">
+            </div>
+            <div class="row">
+              <label for="coordSource">Folder</label>
+              <select id="coordSource"></select>
+            </div>
+            <div class="row coord-actions">
+              <label for="coordFolder">Selected Folder</label>
+              <input id="coordFolder">
+              <button type="button">Refresh</button>
+            </div>
+            <div class="button-row">
+              <button type="button">Open Folder PDF</button>
+              <button type="button">Browse Other PDF</button>
+            </div>
+            <div class="statusline">
+              <span class="status">Page 1 / 1</span>
+              <span class="status ok">Mapping saves as mapping.json in this folder</span>
+              <span class="status" id="coordMappingDate">Last edit: -</span>
+            </div>
+          </fieldset>
+
+          <fieldset>
+            <legend>2. Click On PDF</legend>
+            <div class="coord-pair">
+              <label for="coordX">x:</label>
+              <input id="coordX" value="150.0">
+              <label for="coordY">y:</label>
+              <input id="coordY" value="336.0">
+            </div>
+            <div class="small">In the real app, click the PDF preview to capture exact overlay coordinates.</div>
+          </fieldset>
+
+          <fieldset>
+            <legend>3. Field Details</legend>
+            <div class="row">
+              <label for="coordFieldId">Field ID</label>
+              <select id="coordFieldId">
+                <option>name</option>
+                <option>ic_number</option>
+                <option>cis</option>
+                <option>amount</option>
+                <option>product_type</option>
+                <option>action_purpose</option>
+              </select>
+            </div>
+            <div class="row">
+              <label for="coordLabel">Display label</label>
+              <input id="coordLabel" value="Action Purpose">
+            </div>
+            <div class="row">
+              <label for="coordSourceSheet">Source</label>
+              <select id="coordSourceSheet">
+                <option>default_clients</option>
+                <option>default_accounts</option>
+                <option>Session Input</option>
+                <option>Fixed Text</option>
+                <option>Auto Date</option>
+              </select>
+            </div>
+            <div class="row">
+              <label for="coordFormat">Format</label>
+              <select id="coordFormat">
+                <option>text</option>
+                <option>ic_dashed</option>
+                <option>currency_2_decimals</option>
+                <option>currency_no_decimals</option>
+                <option>date_ddmmyyyy</option>
+                <option>all_uppercase</option>
+              </select>
+            </div>
+            <div class="row">
+              <label for="coordFont">Font size</label>
+              <input id="coordFont" value="10">
+            </div>
+            <div class="row">
+              <label for="coordAlign">Align</label>
+              <select id="coordAlign">
+                <option>left</option>
+                <option>center</option>
+                <option>right</option>
+              </select>
+            </div>
+            <div class="row">
+              <label for="coordWidth">Box width</label>
+              <input id="coordWidth" value="240.0">
+            </div>
+            <div class="controls-row">
+              <button type="button" id="addCoordField">Add Field</button>
+              <button type="button">Update</button>
+              <button type="button">Delete</button>
+              <button type="button">Clear Page</button>
+              <button type="button">Clear All</button>
+            </div>
+          </fieldset>
+        </div>
+
+        <fieldset>
+          <legend>PDF Preview</legend>
+          <div class="pdf-shell">
+            <div class="pdf-page" id="pdfPage">
+              <div class="pdf-logo">RHB</div>
+              <div class="pdf-heading">COMPLIANCE TO THE CODE OF CONDUCT FOR<br>MALAYSIA WHOLESALE FINANCIAL MARKETS</div>
+              <div class="pdf-body">
+                <p>I hereby confirm that I have read the Code of Conduct and agree to be bound by the applicable terms and conditions.</p>
+                <p>I acknowledge and understand that strict compliance with policies and procedures shall constitute a condition of my relationship with the bank.</p>
+                <p>By signing this form, I declare that I am in compliance with the said requirements.</p>
+              </div>
+              <div class="pdf-field" style="left: 260px; top: 770px; width: 270px;"></div>
+              <div class="coord-marker" style="left: 150px; top: 336px;"></div>
+            </div>
+          </div>
+        </fieldset>
+      </div>
+    </section>
+
+    <section class="view" id="tab-history">
+      <div class="split-two">
+        <fieldset>
+          <legend>History / Drafts</legend>
+          <div class="row">
+            <label for="historySearch">Search</label>
+            <input id="historySearch" placeholder="Client, CIS, procedure, status">
+          </div>
+          <table>
+            <thead>
+              <tr>
+                <th style="width: 20%">Date</th>
+                <th style="width: 30%">Client</th>
+                <th style="width: 24%">Procedure</th>
+                <th style="width: 16%">Forms</th>
+                <th style="width: 10%">Status</th>
+                <th style="width: 10%">Action</th>
+              </tr>
+            </thead>
+            <tbody id="historyRows"></tbody>
+          </table>
+          <div class="small">Drafts and generated packages share the same history list. Restore loads the saved client, procedure, account, manual inputs, and saved source PDF snapshot.</div>
+        </fieldset>
+
+        <fieldset>
+          <legend>Local Files / Settings</legend>
+          <div class="row">
+            <label>Recent history</label>
+            <select>
+              <option>Show last 5 per client</option>
+              <option>Show last 10 per client</option>
+            </select>
+          </div>
+          <div class="row">
+            <label>Expiry warning</label>
+            <select>
+              <option>Warn 30 days before expiry</option>
+              <option>Warn 60 days before expiry</option>
+            </select>
+          </div>
+          <div class="row">
+            <label>Default form folder</label>
+            <input value="config/forms">
+          </div>
+          <div class="controls-row">
+            <button type="button">Open Customer Workbook</button>
+            <button type="button">Open History Log</button>
+            <button type="button">Open Procedures</button>
+            <button type="button">Open Source Forms</button>
+            <button type="button">Open Mapping JSON</button>
+            <button type="button">Open Output Folder</button>
+          </div>
+        </fieldset>
+      </div>
+    </section>
+
+    <div class="footer" id="footer">Loading package config...</div>
+  </main>
+
+  <script>
+    const FALLBACK_PROCEDURES = [
+      { ProcedureCode: "P004", DisplayName: "FD Bundle + UT", Version: "V01", Active: true, DefaultOutputName: "{client_name}_{date}_({procedure})", Description: "FD bundled with UT investment", Remarks: "" },
+      { ProcedureCode: "P011", DisplayName: "SI Investment Test", Version: "V01", Active: true, DefaultOutputName: "{client_name}_{date}_({procedure})", Description: "", Remarks: "" },
+      { ProcedureCode: "P012", DisplayName: "Bond Investment", Version: "V01", Active: true, DefaultOutputName: "{client_name}_{date}_({procedure})", Description: "", Remarks: "" }
+    ];
+
+    const FALLBACK_SOURCES = [
+      { SourceFormCode: "SF002", DisplayName: "FD Instruction Form", Version: "V01", PDFFilePath: "", MappingKey: "SF002", Active: true, EffectiveDate: "", ExpiryDate: "", Remarks: "" },
+      { SourceFormCode: "SF003", DisplayName: "UT Investment Form", Version: "V01", PDFFilePath: "", MappingKey: "SF003", Active: true, EffectiveDate: "", ExpiryDate: "", Remarks: "" },
+      { SourceFormCode: "SF008", DisplayName: "SI Investment Form", Version: "V01", PDFFilePath: "", MappingKey: "SF008", Active: true, EffectiveDate: "", ExpiryDate: "", Remarks: "" }
+    ];
+
+    const FALLBACK_ITEMS = [
+      { ProcedureCode: "P004", StepNo: 1, ItemType: "SourceForm", SourceFormCode: "SF002" },
+      { ProcedureCode: "P004", StepNo: 2, ItemType: "SourceForm", SourceFormCode: "SF003" },
+      { ProcedureCode: "P011", StepNo: 1, ItemType: "SourceForm", SourceFormCode: "SF008" },
+      { ProcedureCode: "P012", StepNo: 1, ItemType: "SourceForm", SourceFormCode: "SF003" }
+    ];
+
+    const PROPOSED_BOND_OPENING = {
+      procedure: {
+        ProcedureCode: "P220",
+        DisplayName: "Bond Account Opening",
+        Version: "Draft",
+        Active: true,
+        DefaultOutputName: "{client_name}_{date}_({procedure})",
+        Description: "Preview procedure for discussion",
+        Remarks: "Mockup-only until saved in procedures.json",
+        Tags: "Bond, Account Opening, KYC"
+      },
+      forms: [
+        { SourceFormCode: "03_kyc_principal", DisplayName: "KYC Form Principal", Version: "Draft", PDFFilePath: "", MappingKey: "03_kyc_principal", Active: true, EffectiveDate: "", ExpiryDate: "", Remarks: "Preview source form" },
+        { SourceFormCode: "12_bond_only_checklist", DisplayName: "Bond Only Checklist", Version: "Draft", PDFFilePath: "", MappingKey: "12_bond_only_checklist", Active: true, EffectiveDate: "", ExpiryDate: "", Remarks: "Preview source form" },
+        { SourceFormCode: "13_bond_only_term_condition", DisplayName: "Bond Only Term And Condition", Version: "Draft", PDFFilePath: "", MappingKey: "13_bond_only_term_condition", Active: true, EffectiveDate: "", ExpiryDate: "", Remarks: "Preview source form" },
+        { SourceFormCode: "15_bond_only_pds", DisplayName: "Bond Only PDS", Version: "Draft", PDFFilePath: "", MappingKey: "15_bond_only_pds", Active: true, EffectiveDate: "", ExpiryDate: "", Remarks: "Preview source form" }
+      ]
+    };
+
+    const SAMPLE_CUSTOMERS = [
+      { name: "Mary Lee Sample", cis: "CIS002", ic: "850202105678", passport: "", policy: "POL002" },
+      { name: "Ahmad Sample", cis: "CIS003", ic: "780303109999", passport: "A12345678", policy: "POL003" },
+      { name: "Tan Sample", cis: "CIS001", ic: "900101101234", passport: "", policy: "POL001" }
+    ];
+
+    const SAMPLE_ACCOUNTS = [
+      { owner: "CIS002", type: "SI", label: "Mary SI Single | SI-002 | Mary Lee Sample" },
+      { owner: "CIS002", type: "UT", label: "Mary UT Single | UT-018 | Mary Lee Sample" },
+      { owner: "CIS002", type: "Bond", label: "Mary Bond Joint | BOND-004 | Mary Lee Sample" },
+      { owner: "CIS003", type: "UT", label: "Ahmad UT Account | UT-026 | Ahmad Sample" },
+      { owner: "CIS003", type: "Bond", label: "Ahmad Bond Account | BOND-011 | Ahmad Sample" },
+      { owner: "CIS001", type: "SI", label: "Tan SI Account | SI-009 | Tan Sample" },
+      { owner: "CIS001", type: "Bond", label: "Tan Bond Account | BOND-021 | Tan Sample" }
+    ];
+
+    const PROCEDURE_INPUTS = {
+      P004: [
+        { field: "name", value: "", required: true, count: 2, defaultField: true },
+        { field: "ic_number", value: "", required: true, count: 2, defaultField: true },
+        { field: "cis", value: "", required: true, count: 1, defaultField: true },
+        { field: "investment_amount", value: "50000", required: true, count: 2 },
+        { field: "product_type", value: "UT Investment", required: true, count: 1 },
+        { field: "action_purpose", value: "FD Bundle + UT test", required: true, count: 1 }
+      ],
+      P011: [
+        { field: "name", value: "", required: true, count: 2, defaultField: true },
+        { field: "ic_number", value: "", required: true, count: 2, defaultField: true },
+        { field: "cis", value: "", required: true, count: 1, defaultField: true },
+        { field: "investment_amount", value: "25000", required: true, count: 2 },
+        { field: "product_type", value: "SI Investment", required: true, count: 1 },
+        { field: "action_purpose", value: "SI investment test", required: true, count: 1 }
+      ],
+      P012: [
+        { field: "name", value: "", required: true, count: 3, defaultField: true },
+        { field: "ic_number", value: "", required: true, count: 3, defaultField: true },
+        { field: "cis", value: "", required: true, count: 1, defaultField: true },
+        { field: "bond_name", value: "", required: true, count: 3 },
+        { field: "investment_amount", value: "100000", required: true, count: 2 },
+        { field: "settlement_account", value: "", required: false, count: 1 }
+      ],
+      P220: [
+        { field: "name", value: "", required: true, count: 4, defaultField: true },
+        { field: "ic_number", value: "", required: true, count: 4, defaultField: true },
+        { field: "cis", value: "", required: true, count: 2, defaultField: true },
+        { field: "investment_amount", value: "50000", required: true, count: 2 },
+        { field: "product_type", value: "Bond", required: true, count: 1 },
+        { field: "action_purpose", value: "Bond account opening", required: true, count: 1 }
+      ]
+    };
+
+    const HISTORY_ROWS = [
+      { date: "29/05/2026 10:12", client: "Mary Lee Sample", cis: "CIS002", procedure: "P004 - FD Bundle + UT", forms: "SF002, SF003", status: "Draft" },
+      { date: "28/05/2026 16:30", client: "Mary Lee Sample", cis: "CIS002", procedure: "P011 - SI Investment Test", forms: "SF008", status: "Generated" },
+      { date: "27/05/2026 15:40", client: "Tan Sample", cis: "CIS001", procedure: "P220 - Bond Account Opening", forms: "4 saved PDFs", status: "Draft" },
+      { date: "24/05/2026 09:20", client: "Ahmad Sample", cis: "CIS003", procedure: "P012 - Bond Investment", forms: "Apr PDF snapshot", status: "Generated" }
+    ];
+
+    const TAG_RULES = [
+      ["FD", /\bfd\b|fixed deposit/i],
+      ["UT", /\but\b|unit trust/i],
+      ["SI", /\bsi\b|structured/i],
+      ["Bond", /bond|sukuk/i],
+      ["Banca", /banca|insurance|takaful|tokio/i],
+      ["ASNB", /asnb/i],
+      ["Account Opening", /account opening|opening|kyc|risk|indemnity/i],
+      ["Service", /service|maintenance|switch|withdrawal|retag/i],
+      ["Bundle", /bundle|related/i]
+    ];
+
+    const state = {
+      procedures: [],
+      sourceForms: [],
+      procedureItems: [],
+      formsConfig: {},
+      selectedTags: new Set(),
+      selectedSourceCode: "",
+      scannedFolders: [],
+      formRoots: [],
+      selectedRootName: "",
+      selectedCustomerCis: "CIS002"
+    };
+
+    async function loadJson(url, fallback) {
+      try {
+        const response = await fetch(url, { cache: "no-store" });
+        if (!response.ok) throw new Error(url);
+        return await response.json();
+      } catch (_err) {
+        return fallback;
+      }
+    }
+
+    function hiddenGroupingText(row) {
+      return row["Catego" + "ry"] || "";
+    }
+
+    function isActive(row) {
+      return row.Active !== false && String(row.Active || "").toLowerCase() !== "false";
+    }
+
+    function procLabel(proc) {
+      return `${proc.ProcedureCode} - ${proc.DisplayName || proc.ProcedureCode}`;
+    }
+
+    function sourceLabel(source) {
+      return `${source.SourceFormCode} - ${source.DisplayName || source.SourceFormCode}`;
+    }
+
+    function cleanName(value) {
+      return String(value || "")
+        .replace(/^\d+[_\-\s]*/, "")
+        .replace(/[_\-]+/g, " ")
+        .replace(/\b\w/g, char => char.toUpperCase());
+    }
+
+    function cleanFilenamePart(value) {
+      return String(value || "")
+        .normalize("NFKD")
+        .replace(/[^\w\s.()-]/g, "")
+        .replace(/\s+/g, "_")
+        .replace(/_+/g, "_")
+        .replace(/^[._-]+|[._-]+$/g, "");
+    }
+
+    function filenameDate(value) {
+      const text = String(value || "");
+      const match = text.match(/(\d{1,2})[/-](\d{1,2})[/-](\d{2,4})/);
+      if (!match) return "300526";
+      const day = match[1].padStart(2, "0");
+      const month = match[2].padStart(2, "0");
+      const year = match[3].slice(-2);
+      return `${day}${month}${year}`;
+    }
+
+    function outputTemplate(proc) {
+      const existing = proc.DefaultOutputName || "";
+      if (/ClientName/i.test(existing) && !/[{}]/.test(existing)) {
+        return "{client_name}_{date}_({procedure})";
+      }
+      return existing || "{client_name}_{date}_({procedure})";
+    }
+
+    function renderOutputPreview(proc) {
+      const template = document.getElementById("builderOutput").value || "{client_name}_{date}_({procedure})";
+      const client = cleanFilenamePart(selectedCustomer().name);
+      const procName = cleanFilenamePart(proc.DisplayName || proc.ProcedureCode);
+      const dateText = filenameDate(document.getElementById("dateField").value || "29/05/2026");
+      const fallback = `${client}_${dateText}_(${procName})`;
+      const result = template
+        .replaceAll("{client_name}", client)
+        .replaceAll("{date}", dateText)
+        .replaceAll("{procedure}", procName)
+        .replaceAll("ClientName", client)
+        .replaceAll("Date", dateText);
+      document.getElementById("builderOutputPreview").value = `${cleanFilenamePart(result || fallback)}.pdf`;
+    }
+
+    function tagsForProcedure(proc) {
+      const existing = proc.Tags || proc.tags || "";
+      if (Array.isArray(existing) && existing.length) return existing.slice(0, 4);
+      if (typeof existing === "string" && existing.trim()) {
+        return existing.split(",").map(item => item.trim()).filter(Boolean).slice(0, 4);
+      }
+      const text = [proc.DisplayName, proc.Description, proc.Remarks, hiddenGroupingText(proc)].join(" ");
+      const tags = TAG_RULES.filter(([, test]) => test.test(text)).map(([tag]) => tag);
+      return tags.length ? tags.slice(0, 4) : ["General"];
+    }
+
+    function allTags() {
+      const found = new Set();
+      state.procedures.filter(isActive).forEach(proc => tagsForProcedure(proc).forEach(tag => found.add(tag)));
+      const ordered = TAG_RULES.map(([tag]) => tag).filter(tag => found.has(tag));
+      if (found.has("General")) ordered.push("General");
+      return ordered.slice(0, 9);
+    }
+
+    function filteredProceduresFor(queryText, tags = [...state.selectedTags]) {
+      const query = String(queryText || "").trim().toLowerCase();
+      return state.procedures.filter(isActive).filter(proc => {
+        const procTags = tagsForProcedure(proc);
+        const haystack = [proc.ProcedureCode, proc.DisplayName, proc.Description, procTags.join(" ")].join(" ").toLowerCase();
+        const searchOk = !query || haystack.includes(query);
+        const tagOk = tags.length === 0 || tags.some(tag => procTags.includes(tag));
+        return searchOk && tagOk;
+      });
+    }
+
+    function filteredProcedures() {
+      return filteredProceduresFor(document.getElementById("procedureSearch").value);
+    }
+
+    function filteredBulkProcedures() {
+      return filteredProceduresFor(document.getElementById("bulkProcedureSearch").value);
+    }
+
+    function selectedProcedure() {
+      const code = document.getElementById("procedureSelect").value;
+      return procedureByCode(code) || filteredProcedures()[0] || state.procedures[0];
+    }
+
+    function procedureByCode(code) {
+      return state.procedures.find(proc => proc.ProcedureCode === code);
+    }
+
+    function selectedBuilderProcedure() {
+      return procedureByCode(document.getElementById("builderProcedure").value) || selectedProcedure();
+    }
+
+    function sourceByCode(code) {
+      return state.sourceForms.find(source => source.SourceFormCode === code);
+    }
+
+    function selectedCustomer() {
+      return SAMPLE_CUSTOMERS.find(row => row.cis === state.selectedCustomerCis) || SAMPLE_CUSTOMERS[0];
+    }
+
+    function customerLabel(customer) {
+      return `${customer.name} | ${customer.cis} | IC ${customer.ic || "-"}${customer.passport ? ` | Passport ${customer.passport}` : ""}`;
+    }
+
+    function procedureAccountType(proc) {
+      const text = [proc?.ProcedureCode, proc?.DisplayName, proc?.Description, tagsForProcedure(proc || {}).join(" ")].join(" ").toLowerCase();
+      if (text.includes("bond")) return "Bond";
+      if (/\but\b|unit trust/.test(text)) return "UT";
+      if (/\bsi\b|structured/.test(text)) return "SI";
+      return "";
+    }
+
+    function renderCustomerDropdown() {
+      const query = document.getElementById("customerSearch").value.trim().toLowerCase();
+      const select = document.getElementById("customerDropdown");
+      const rows = SAMPLE_CUSTOMERS.filter(customer => {
+        const haystack = [customer.name, customer.cis, customer.ic, customer.passport, customer.policy].join(" ").toLowerCase();
+        return !query || haystack.includes(query);
+      });
+      select.innerHTML = "";
+      rows.forEach(customer => {
+        const option = document.createElement("option");
+        option.value = customer.cis;
+        option.textContent = customerLabel(customer);
+        select.appendChild(option);
+      });
+      if (rows.length && !rows.some(customer => customer.cis === state.selectedCustomerCis)) {
+        state.selectedCustomerCis = rows[0].cis;
+      }
+      if (rows.length) select.value = state.selectedCustomerCis;
+      document.getElementById("selectedCustomerLabel").textContent = rows.length ? `Selected: ${selectedCustomer().name}` : "Selected: -";
+      renderAccountDropdown();
+      renderDefaultAndInputRows();
+      renderOutputPreview(selectedBuilderProcedure());
+    }
+
+    function renderDefaultAndInputRows() {
+      const customer = selectedCustomer();
+      const proc = selectedProcedure();
+      const defaultValues = {
+        name: customer.name,
+        ic_number: customer.ic,
+        passport_number: customer.passport || "",
+        cis: customer.cis,
+        policy_number: customer.policy || ""
+      };
+      const defaultRows = (PROCEDURE_INPUTS[proc?.ProcedureCode] || [])
+        .filter(row => row.defaultField)
+        .sort((a, b) => Number(b.count || 1) - Number(a.count || 1));
+      document.getElementById("defaultInfoRows").innerHTML = defaultRows.map(row => `
+        <tr>
+          <td>*${row.field} <span class="status">x${row.count || 1}</span></td>
+          <td><input value="${defaultValues[row.field] || row.value || ""}"></td>
+          <td><button type="button">Edit</button></td>
+        </tr>
+      `).join("") || '<tr><td colspan="3">No client default column is used by this procedure.</td></tr>';
+
+      const rows = (PROCEDURE_INPUTS[proc?.ProcedureCode] || [])
+        .filter(row => !row.defaultField)
+        .sort((a, b) => Number(b.count || 1) - Number(a.count || 1));
+      document.getElementById("formInputRows").innerHTML = rows.map(row => `
+        <tr>
+          <td>${row.field} <span class="status">x${row.count || 1}</span></td>
+          <td><input value="${row.value || ""}"></td>
+          <td><span class="status ${row.required ? "ok" : ""}">${row.required ? "Yes" : "Optional"}</span></td>
+        </tr>
+      `).join("") || '<tr><td colspan="3">No extra input required for this procedure.</td></tr>';
+    }
+
+    function renderAccountDropdown() {
+      const select = document.getElementById("accountSelect");
+      const customer = selectedCustomer();
+      const proc = selectedProcedure();
+      const preferred = procedureAccountType(proc);
+      let rows = SAMPLE_ACCOUNTS.filter(account => account.owner === customer.cis);
+      const preferredRows = preferred ? rows.filter(account => account.type.toLowerCase() === preferred.toLowerCase()) : rows;
+      const usedPreferred = Boolean(preferred && preferredRows.length);
+      if (usedPreferred) rows = preferredRows;
+      select.innerHTML = "";
+      rows.forEach(account => {
+        const option = document.createElement("option");
+        option.value = account.label;
+        option.textContent = account.label;
+        select.appendChild(option);
+      });
+      document.getElementById("accountSummary").innerHTML = [
+        makeStatus(`${rows.length} account(s)`),
+        preferred
+          ? makeStatus(usedPreferred ? `Relevant: ${preferred}` : `No ${preferred} account, showing all`, usedPreferred ? "ok" : "warn")
+          : makeStatus("No product filter")
+      ].join("");
+    }
+
+    function normalizeLookup(value) {
+      return String(value || "").replace(/[^a-z0-9]+/gi, "").toLowerCase();
+    }
+
+    function matchCustomerIdentifier(identifier) {
+      const value = String(identifier || "").trim();
+      if (!value) return { status: "Blank", type: "bad" };
+      const key = normalizeLookup(value);
+      const exact = SAMPLE_CUSTOMERS.find(customer => [customer.cis, customer.ic, customer.passport].some(raw => normalizeLookup(raw) === key));
+      if (exact) return { customer: exact, status: "Ready", type: "ok" };
+      const fuzzy = SAMPLE_CUSTOMERS.filter(customer => normalizeLookup(customer.name).includes(key));
+      if (fuzzy.length === 1) return { customer: fuzzy[0], status: "Ready", type: "ok" };
+      if (fuzzy.length > 1) return { customer: fuzzy[0], status: "Need Review", type: "warn" };
+      return { status: "Not Found", type: "bad" };
+    }
+
+    function renderBulkMatches() {
+      const body = document.getElementById("bulkMatchRows");
+      if (!body) return;
+      const proc = state.procedures.find(row => row.ProcedureCode === document.getElementById("bulkProcedure").value) || selectedProcedure();
+      const preferred = procedureAccountType(proc);
+      const identifiers = document.getElementById("bulkIdentifiers").value.split(/\n+/).map(row => row.trim()).filter(Boolean);
+      body.innerHTML = identifiers.map(identifier => {
+        const matched = matchCustomerIdentifier(identifier);
+        let status = matched.status;
+        let type = matched.type;
+        if (matched.customer && preferred) {
+          const accounts = SAMPLE_ACCOUNTS.filter(account => account.owner === matched.customer.cis);
+          const hasRelevant = accounts.some(account => account.type.toLowerCase() === preferred.toLowerCase());
+          if (!hasRelevant) {
+            status = "Needs Input";
+            type = "warn";
+          }
+        }
+        const usable = matched.customer && type !== "bad";
+        return `
+          <tr>
+            <td><input type="checkbox" ${usable ? "checked" : ""} style="width:auto"></td>
+            <td>${identifier}</td>
+            <td>${matched.customer ? `${matched.customer.name} (${matched.customer.cis})` : "-"}</td>
+            <td>${makeStatus(status, type)}</td>
+          </tr>
+        `;
+      }).join("") || '<tr><td colspan="4">Paste or import one identifier per line.</td></tr>';
+    }
+
+    function renderHistoryRows() {
+      const body = document.getElementById("historyRows");
+      if (!body) return;
+      const query = document.getElementById("historySearch").value.trim().toLowerCase();
+      const rows = HISTORY_ROWS.filter(row => !query || [row.date, row.client, row.cis, row.procedure, row.forms, row.status].join(" ").toLowerCase().includes(query));
+      body.innerHTML = rows.map(row => `
+        <tr>
+          <td>${row.date}</td>
+          <td>${row.client}</td>
+          <td>${row.procedure}</td>
+          <td>${row.forms || "-"}</td>
+          <td>${makeStatus(row.status, row.status === "Draft" ? "warn" : "ok")}</td>
+          <td><button type="button">Restore</button></td>
+        </tr>
+      `).join("") || '<tr><td colspan="6">No matching history.</td></tr>';
+    }
+
+    function itemsForProcedure(code) {
+      return state.procedureItems
+        .filter(item => item.ProcedureCode === code)
+        .sort((a, b) => Number(a.StepNo || 0) - Number(b.StepNo || 0));
+    }
+
+    function applyProposedPreviewData() {
+      if (!state.procedures.some(proc => proc.ProcedureCode === PROPOSED_BOND_OPENING.procedure.ProcedureCode)) {
+        state.procedures.push(PROPOSED_BOND_OPENING.procedure);
+      }
+      PROPOSED_BOND_OPENING.forms.forEach(source => {
+        if (!state.sourceForms.some(row => row.SourceFormCode === source.SourceFormCode)) {
+          state.sourceForms.push(source);
+        }
+      });
+      const hasItems = state.procedureItems.some(item => item.ProcedureCode === PROPOSED_BOND_OPENING.procedure.ProcedureCode);
+      if (!hasItems) {
+        PROPOSED_BOND_OPENING.forms.forEach((source, index) => {
+          state.procedureItems.push({
+            ProcedureCode: PROPOSED_BOND_OPENING.procedure.ProcedureCode,
+            StepNo: index + 1,
+            ItemType: "SourceForm",
+            SourceFormCode: source.SourceFormCode,
+            BlankPageCount: 0,
+            Remarks: "Preview sequence"
+          });
+        });
+      }
+      if (!state.formRoots.length) {
+        state.formRoots = [
+          { name: "Main Form Folder", handle: null },
+          { name: "Bond Form Folder", handle: null }
+        ];
+        state.selectedRootName = "Main Form Folder";
+        state.scannedFolders = [
+          { root: "Main Form Folder", name: "SF002", pdfs: ["fd_instruction_v01.pdf"], nestedFolders: 1, oldFormsExists: true, mapped: true, mappingUpdated: "29/05/2026" },
+          { root: "Main Form Folder", name: "SF003", pdfs: ["ut_investment_v02.pdf"], nestedFolders: 1, oldFormsExists: false, mapped: true, mappingUpdated: "28/05/2026" },
+          { root: "Main Form Folder", name: "SF008", pdfs: [], nestedFolders: 0, oldFormsExists: false, mapped: false, mappingUpdated: "" },
+          { root: "Bond Form Folder", name: "03_kyc_principal", pdfs: ["kyc_principal.pdf"], nestedFolders: 1, oldFormsExists: true, mapped: true, mappingUpdated: "29/05/2026" },
+          { root: "Bond Form Folder", name: "12_bond_only_checklist", pdfs: ["bond_checklist.pdf"], nestedFolders: 1, oldFormsExists: true, mapped: false, mappingUpdated: "" },
+          { root: "Bond Form Folder", name: "13_bond_only_term_condition", pdfs: ["term_a.pdf", "term_b.pdf"], nestedFolders: 1, oldFormsExists: true, mapped: true, mappingUpdated: "27/05/2026" },
+          { root: "Bond Form Folder", name: "15_bond_only_pds", pdfs: ["pds_latest.pdf"], nestedFolders: 0, oldFormsExists: false, mapped: true, mappingUpdated: "27/05/2026" }
+        ];
+      }
+    }
+
+    function setFooter(message) {
+      document.getElementById("footer").textContent = message;
+    }
+
+    function makeStatus(text, type = "") {
+      return `<span class="status ${type}">${text}</span>`;
+    }
+
+    function switchTab(name) {
+      document.querySelectorAll(".tab").forEach(item => item.classList.remove("active"));
+      document.querySelectorAll(".view").forEach(item => item.classList.remove("active"));
+      const tabButton = document.querySelector(`.tab[data-tab="${name}"]`);
+      const tabView = document.getElementById(`tab-${name}`);
+      if (tabButton) tabButton.classList.add("active");
+      if (tabView) tabView.classList.add("active");
+    }
+
+    function renderTabs() {
+      document.querySelectorAll(".tab").forEach(button => {
+        button.addEventListener("click", () => {
+          switchTab(button.dataset.tab);
+        });
+      });
+    }
+
+    function renderTags() {
+      [document.getElementById("tagBox"), document.getElementById("bulkTagBox")].forEach(box => {
+        box.innerHTML = "";
+        allTags().forEach(tag => {
+          const chip = document.createElement("span");
+          chip.className = `tag${state.selectedTags.has(tag) ? " active" : ""}`;
+          chip.textContent = tag;
+          chip.addEventListener("click", () => {
+            if (state.selectedTags.has(tag)) {
+              state.selectedTags.delete(tag);
+            } else {
+              state.selectedTags.add(tag);
+            }
+            renderProcedureArea();
+          });
+          box.appendChild(chip);
+        });
+      });
+    }
+
+    function fillProcedureSelect(select, rows, previous) {
+      select.innerHTML = "";
+      rows.forEach(proc => {
+        const option = document.createElement("option");
+        option.value = proc.ProcedureCode;
+        option.textContent = procLabel(proc);
+        select.appendChild(option);
+      });
+      if (rows.some(proc => proc.ProcedureCode === previous)) {
+        select.value = previous;
+      }
+    }
+
+    function renderProcedureArea() {
+      renderTags();
+      const previous = document.getElementById("procedureSelect").value;
+      const rows = filteredProcedures();
+      const bulkPrevious = document.getElementById("bulkProcedure").value;
+      const builderPrevious = document.getElementById("builderProcedure").value || previous;
+      const bulkRows = filteredBulkProcedures();
+      fillProcedureSelect(document.getElementById("procedureSelect"), rows, previous);
+      fillProcedureSelect(document.getElementById("bulkProcedure"), bulkRows, bulkPrevious || previous);
+      fillProcedureSelect(document.getElementById("builderProcedure"), state.procedures.filter(isActive), builderPrevious);
+
+      const tags = [...state.selectedTags];
+      document.getElementById("filterSummary").innerHTML = [
+        makeStatus(`${rows.length} procedure(s) shown`),
+        makeStatus(tags.length ? `Filtered by: ${tags.join(", ")}` : "No tag filter", tags.length ? "ok" : ""),
+        makeStatus("Tag match: any")
+      ].join("");
+
+      renderProcedureStructure();
+      renderBuilder();
+      renderAccountDropdown();
+      renderDefaultAndInputRows();
+      renderBulkMatches();
+    }
+
+    function renderProcedureStructure() {
+      const proc = selectedProcedure();
+      const box = document.getElementById("procedureStructure");
+      box.innerHTML = "";
+      if (!proc) {
+        box.innerHTML = '<div class="list-line">No procedure selected.</div>';
+        return;
+      }
+      const items = itemsForProcedure(proc.ProcedureCode);
+      const header = document.createElement("div");
+      header.className = "list-line selected";
+      header.textContent = `${procLabel(proc)}  (${items.length} form${items.length === 1 ? "" : "s"})`;
+      box.appendChild(header);
+      const title = document.createElement("div");
+      title.className = "list-line";
+      title.textContent = "Auto blank page: ON after odd-page source PDFs";
+      box.appendChild(title);
+
+      if (!items.length) {
+        const empty = document.createElement("div");
+        empty.className = "list-line";
+        empty.textContent = "No package items configured.";
+        box.appendChild(empty);
+      }
+      items.forEach((item, index) => {
+        const source = sourceByCode(item.SourceFormCode);
+        const row = document.createElement("div");
+        row.className = "list-line";
+        row.textContent = `${String(index + 1).padStart(2, " ")}. ${item.SourceFormCode || item.ItemType}  ${source ? source.DisplayName : item.ItemType}`;
+        box.appendChild(row);
+      });
+    }
+
+    function renderBuilder() {
+      const proc = selectedBuilderProcedure();
+      if (!proc) return;
+      document.getElementById("builderCode").value = proc.ProcedureCode || "";
+      document.getElementById("builderName").value = proc.DisplayName || "";
+      document.getElementById("builderTags").value = tagsForProcedure(proc).join(", ");
+      document.getElementById("builderVersion").value = proc.Version || "";
+      document.getElementById("builderOutput").value = outputTemplate(proc);
+      document.getElementById("builderDesc").value = proc.Description || "";
+      document.getElementById("builderRemarks").value = proc.Remarks || "";
+      renderOutputPreview(proc);
+
+      const available = document.getElementById("availableSources");
+      available.innerHTML = "";
+      const sourceQuery = document.getElementById("sourceFilter")?.value.trim().toLowerCase() || "";
+      state.sourceForms
+        .filter(source => !sourceQuery || sourceLabel(source).toLowerCase().includes(sourceQuery) || cleanName(source.MappingKey || "").toLowerCase().includes(sourceQuery))
+        .forEach(source => {
+        const row = document.createElement("div");
+        row.className = "list-line";
+        row.textContent = sourceLabel(source) + (isActive(source) ? "" : " [inactive]");
+        available.appendChild(row);
+      });
+
+      const seq = document.getElementById("builderSequence");
+      seq.innerHTML = "";
+      itemsForProcedure(proc.ProcedureCode).forEach((item, index) => {
+        const source = sourceByCode(item.SourceFormCode);
+        const row = document.createElement("div");
+        row.className = `list-line${index === 0 ? " selected" : ""}`;
+        row.textContent = `${index + 1}. ${source ? sourceLabel(source) : item.SourceFormCode}`;
+        seq.appendChild(row);
+      });
+    }
+
+    function sourceStatusFromScan(source) {
+      const key = source.MappingKey || source.SourceFormCode;
+      const folderLike = state.scannedFolders.find(row => row.name === key || cleanName(row.name) === cleanName(source.DisplayName || ""));
+      if (!folderLike) return { label: "Not scanned", type: "", pdf: source.PDFFilePath || "" };
+      return scanStatus(folderLike);
+    }
+
+    function scannedRowForSource(source) {
+      const key = source.MappingKey || source.SourceFormCode;
+      return state.scannedFolders.find(row => row.name === key || cleanName(row.name) === cleanName(source.DisplayName || ""));
+    }
+
+    function sourceExpiryStatus(source) {
+      const expiry = String(source?.ExpiryDate || "").trim();
+      if (!expiry) return { label: "No expiry date", type: "" };
+      const today = new Date("2026-05-30T00:00:00");
+      const parsed = new Date(`${expiry}T00:00:00`);
+      if (Number.isNaN(parsed.getTime())) return { label: "Expiry date invalid", type: "warn" };
+      if (parsed < today) return { label: `Expired ${expiry}`, type: "bad" };
+      const days = Math.ceil((parsed - today) / 86400000);
+      if (days <= 30) return { label: `Expiring in ${days} day(s)`, type: "warn" };
+      return { label: `Expiry ${expiry}`, type: "ok" };
+    }
+
+    function sourceForScannedFolder(row) {
+      const existing = state.sourceForms.find(source => {
+        const key = source.MappingKey || source.SourceFormCode;
+        return row.name === key || cleanName(row.name) === cleanName(source.DisplayName || "");
+      });
+      if (existing) return existing;
+      return {
+        SourceFormCode: row.name,
+        DisplayName: cleanName(row.name),
+        MappingKey: row.name,
+        PDFFilePath: scanStatus(row).pdf,
+        EffectiveDate: row.effectiveDate || "",
+        ExpiryDate: row.expiryDate || "",
+        Remarks: "Detected from scanned form folder",
+        Active: true
+      };
+    }
+
+    function coordinateSources(queryText = "") {
+      const query = String(queryText || "").trim().toLowerCase();
+      const seen = new Set();
+      return state.sourceForms.concat(state.scannedFolders.map(sourceForScannedFolder)).filter(row => {
+        const key = row.SourceFormCode || row.MappingKey;
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return !query || sourceLabel(row).toLowerCase().includes(query) || cleanName(row.MappingKey || "").toLowerCase().includes(query);
+      });
+    }
+
+    function upsertRoot(name, handle = null) {
+      if (!name) return;
+      let root = state.formRoots.find(row => row.name === name);
+      if (!root) {
+        root = { name, handle };
+        state.formRoots.push(root);
+      } else if (handle) {
+        root.handle = handle;
+      }
+      state.selectedRootName = name;
+      document.getElementById("rootFolder").value = name;
+      renderRootList();
+    }
+
+    function renderRootList() {
+      const list = document.getElementById("rootList");
+      if (!list) return;
+      list.innerHTML = "";
+      if (!state.formRoots.length) {
+        const empty = document.createElement("div");
+        empty.className = "list-line";
+        empty.textContent = "No form root added yet.";
+        list.appendChild(empty);
+        return;
+      }
+      state.formRoots.forEach(root => {
+        const count = state.scannedFolders.filter(row => row.root === root.name).length;
+        const row = document.createElement("div");
+        row.className = `list-line${root.name === state.selectedRootName ? " selected" : ""}`;
+        row.textContent = `${root.name}  (${count} form folder${count === 1 ? "" : "s"})`;
+        row.addEventListener("click", () => {
+          state.selectedRootName = root.name;
+          document.getElementById("rootFolder").value = root.name;
+          renderScanRows();
+        });
+        list.appendChild(row);
+      });
+    }
+
+    function setScannedRowsForRoot(rootName, rows) {
+      state.scannedFolders = state.scannedFolders.filter(row => row.root !== rootName).concat(rows);
+      state.scannedFolders.sort((a, b) => `${a.root}/${a.name}`.localeCompare(`${b.root}/${b.name}`));
+    }
+
+    function renderSourceForms() {
+      const list = document.getElementById("sourceList");
+      list.innerHTML = "";
+      const scannedForRoot = state.scannedFolders.filter(row => !state.selectedRootName || row.root === state.selectedRootName);
+      const rows = scannedForRoot.length ? scannedForRoot.map(sourceForScannedFolder) : state.sourceForms;
+      rows.forEach((source, index) => {
+        const status = sourceStatusFromScan(source);
+        const row = document.createElement("div");
+        row.className = `list-line${source.SourceFormCode === state.selectedSourceCode || (!state.selectedSourceCode && index === 0) ? " selected" : ""}`;
+        row.textContent = `${source.MappingKey || source.SourceFormCode} - ${source.DisplayName || ""}  [${status.label}]`;
+        row.addEventListener("click", () => {
+          state.selectedSourceCode = source.SourceFormCode;
+          renderSourceForms();
+          renderSourceDetail(source);
+        });
+        list.appendChild(row);
+      });
+      const selected = rows.find(source => source.SourceFormCode === state.selectedSourceCode) || rows[0];
+      if (selected) renderSourceDetail(selected);
+    }
+
+    function renderSourceDetail(source) {
+      document.getElementById("sourceFolderName").value = source.MappingKey || source.SourceFormCode || "";
+      document.getElementById("sourceVersion").value = source.Version || "";
+      document.getElementById("sourcePath").value = source.PDFFilePath || "";
+      document.getElementById("sourceEff").value = source.EffectiveDate || "";
+      document.getElementById("sourceExp").value = source.ExpiryDate || "";
+      document.getElementById("sourceRemarks").value = source.Remarks || "";
+      const status = sourceStatusFromScan(source);
+      const expiry = sourceExpiryStatus(source);
+      const scanned = scannedRowForSource(source);
+      const mapped = Boolean(scanned?.mapped || state.formsConfig[source.MappingKey] || state.formsConfig[source.SourceFormCode]);
+      document.getElementById("sourceDetailStatus").innerHTML = [
+        makeStatus(status.label, status.type),
+        makeStatus(expiry.label, expiry.type),
+        makeStatus(mapped ? `Mapping found ${scanned?.mappingUpdated || ""}`.trim() : "Need mapping", mapped ? "ok" : "warn")
+      ].join("");
+      renderCoordinateSource(source);
+    }
+
+    function renderCoordinateSource(source) {
+      if (!source) return;
+      const select = document.getElementById("coordSource");
+      const previous = select.value || source.SourceFormCode;
+      const query = document.getElementById("coordSourceSearch")?.value.trim().toLowerCase() || "";
+      const rows = coordinateSources(query);
+      select.innerHTML = "";
+      rows.forEach(row => {
+        const option = document.createElement("option");
+        option.value = row.SourceFormCode;
+        option.textContent = sourceLabel(row);
+        select.appendChild(option);
+      });
+      select.value = rows.some(row => row.SourceFormCode === previous) ? previous : (rows[0]?.SourceFormCode || source.SourceFormCode);
+      const active = rows.find(row => row.SourceFormCode === select.value) || source;
+      document.getElementById("coordFolder").value = active.PDFFilePath || active.MappingKey || active.SourceFormCode || "";
+      const scanned = scannedRowForSource(active);
+      document.getElementById("coordMappingDate").textContent = `Last edit: ${scanned?.mappingUpdated || "-"}`;
+    }
+
+    function scanStatus(row) {
+      if (!row.pdfs.length) return { label: "Missing PDF", type: "bad", pdf: "No direct PDF" };
+      if (row.pdfs.length > 1) return { label: "Multiple PDFs", type: "warn", pdf: row.pdfs.join(", ") };
+      return { label: "OK", type: "ok", pdf: row.pdfs[0] };
+    }
+
+    function renderScanRows() {
+      const body = document.getElementById("scanRows");
+      body.innerHTML = "";
+      const counts = { ok: 0, missing: 0, multiple: 0, oldMissing: 0 };
+      const rowsToShow = state.selectedRootName
+        ? state.scannedFolders.filter(row => row.root === state.selectedRootName)
+        : state.scannedFolders;
+      rowsToShow.forEach(row => {
+        const status = scanStatus(row);
+        if (status.type === "ok") counts.ok += 1;
+        if (status.type === "bad") counts.missing += 1;
+        if (status.type === "warn") counts.multiple += 1;
+        if (!row.oldFormsExists) counts.oldMissing += 1;
+        const tr = document.createElement("tr");
+        tr.innerHTML = `
+          <td title="${row.root || ""}">${row.root || ""}</td>
+          <td title="${row.name}">${row.name}</td>
+          <td>${makeStatus(status.label, status.type)}</td>
+          <td>${makeStatus(row.oldFormsExists ? "OK" : "Missing", row.oldFormsExists ? "ok" : "warn")}</td>
+          <td>${makeStatus(row.mapped ? `OK ${row.mappingUpdated || ""}`.trim() : "Need map", row.mapped ? "ok" : "warn")}</td>
+        `;
+        body.appendChild(tr);
+      });
+      if (!rowsToShow.length) {
+        body.innerHTML = '<tr><td colspan="5">Add one or more form root folders, then scan selected or all roots.</td></tr>';
+      }
+      document.getElementById("scanSummary").innerHTML = [
+        makeStatus(`${rowsToShow.length} subfolder(s)`),
+        makeStatus(`${counts.ok} OK`, "ok"),
+        makeStatus(`${counts.missing} missing`, counts.missing ? "bad" : ""),
+        makeStatus(`${counts.multiple} multiple`, counts.multiple ? "warn" : ""),
+        makeStatus(`${counts.oldMissing} old forms missing`, counts.oldMissing ? "warn" : "")
+      ].join("");
+      renderRootList();
+      renderSourceForms();
+    }
+
+    async function scanDirectoryHandle(root) {
+      const rows = [];
+      for await (const [name, handle] of root.entries()) {
+        if (handle.kind !== "directory") continue;
+        const pdfs = [];
+        let nestedFolders = 0;
+        let oldFormsExists = false;
+        for await (const [childName, childHandle] of handle.entries()) {
+          if (childHandle.kind === "file" && childName.toLowerCase().endsWith(".pdf")) {
+            pdfs.push(childName);
+          }
+          if (childHandle.kind === "directory") {
+            nestedFolders += 1;
+            if (childName.trim().toLowerCase() === "old forms") oldFormsExists = true;
+          }
+        }
+        rows.push({ root: root.name, name, pdfs, nestedFolders, oldFormsExists, mapped: Boolean(state.formsConfig[name]), mappingUpdated: state.formsConfig[name] ? "saved" : "" });
+      }
+      rows.sort((a, b) => a.name.localeCompare(b.name));
+      upsertRoot(root.name, root);
+      setScannedRowsForRoot(root.name, rows);
+      renderScanRows();
+      setFooter(`Scanned ${rows.length} immediate subfolder(s) under ${root.name}.`);
+    }
+
+    function scanUploadedFiles(files) {
+      const folders = new Map();
+      let rootName = "Uploaded folder";
+      [...files].forEach(file => {
+        const parts = (file.webkitRelativePath || file.name).split("/").filter(Boolean);
+        if (parts.length < 2) return;
+        rootName = parts[0];
+        const folder = parts[1];
+        if (!folders.has(folder)) folders.set(folder, { root: rootName, name: folder, pdfs: [], nestedFolders: 0, oldFormsExists: false, mapped: Boolean(state.formsConfig[folder]), mappingUpdated: state.formsConfig[folder] ? "saved" : "" });
+        const row = folders.get(folder);
+        const filename = parts[parts.length - 1];
+        if (parts.length === 3 && filename.toLowerCase().endsWith(".pdf")) row.pdfs.push(filename);
+        if (parts.length > 3) {
+          row.nestedFolders += 1;
+          if ((parts[2] || "").trim().toLowerCase() === "old forms") row.oldFormsExists = true;
+        }
+      });
+      const rows = [...folders.values()].sort((a, b) => a.name.localeCompare(b.name));
+      upsertRoot(rootName, null);
+      setScannedRowsForRoot(rootName, rows);
+      renderScanRows();
+      setFooter("Upload scan completed. Browser upload may not report completely empty folders.");
+    }
+
+    async function chooseFolder() {
+      if (window.showDirectoryPicker) {
+        try {
+          const root = await window.showDirectoryPicker();
+          await scanDirectoryHandle(root);
+          return;
+        } catch (err) {
+          if (err && err.name === "AbortError") return;
+        }
+      }
+      document.getElementById("folderUpload").click();
+    }
+
+    async function scanSelectedRoot() {
+      const root = state.formRoots.find(row => row.name === state.selectedRootName);
+      if (root && root.handle) {
+        await scanDirectoryHandle(root.handle);
+        return;
+      }
+      renderScanRows();
+      setFooter(root ? `Showing last scanned result for ${root.name}.` : "No selected form root yet.");
+    }
+
+    async function scanAllRoots() {
+      const roots = state.formRoots.filter(row => row.handle);
+      if (!roots.length) {
+        renderScanRows();
+        setFooter("No browser folder handles available. Add folders again or use Upload.");
+        return;
+      }
+      for (const root of roots) {
+        await scanDirectoryHandle(root.handle);
+      }
+      setFooter(`Scanned ${roots.length} root folder(s).`);
+    }
+
+    async function loadPackageConfig() {
+      const [procedures, sources, items, forms] = await Promise.all([
+        loadJson("../config/procedures.json", FALLBACK_PROCEDURES),
+        loadJson("../config/source_forms.json", FALLBACK_SOURCES),
+        loadJson("../config/procedure_items.json", FALLBACK_ITEMS),
+        loadJson("../config/forms.json", {})
+      ]);
+      state.procedures = Array.isArray(procedures) ? procedures : FALLBACK_PROCEDURES;
+      state.sourceForms = Array.isArray(sources) ? sources : FALLBACK_SOURCES;
+      state.procedureItems = Array.isArray(items) ? items : FALLBACK_ITEMS;
+      state.formsConfig = forms && typeof forms === "object" ? forms : {};
+      applyProposedPreviewData();
+      if (state.selectedRootName) document.getElementById("rootFolder").value = state.selectedRootName;
+      if (!state.selectedSourceCode && state.sourceForms[0]) state.selectedSourceCode = state.sourceForms[0].SourceFormCode;
+      renderProcedureArea();
+      document.getElementById("procedureSelect").value = "P220";
+      document.getElementById("bulkProcedure").value = "P220";
+      document.getElementById("builderProcedure").value = "P220";
+      renderCustomerDropdown();
+      renderProcedureStructure();
+      renderBuilder();
+      renderAccountDropdown();
+      renderRootList();
+      renderScanRows();
+      renderCoordinateSource(state.sourceForms.find(source => source.SourceFormCode === state.selectedSourceCode) || state.sourceForms[0]);
+      renderBulkMatches();
+      renderHistoryRows();
+      setFooter(`Loaded ${state.procedures.length} procedure(s), ${state.sourceForms.length} source form(s), ${state.procedureItems.length} package item(s). P220 is added as proposed preview sequence.`);
+    }
+
+    function attachEvents() {
+      document.getElementById("customerSearch").addEventListener("input", renderCustomerDropdown);
+      document.getElementById("customerDropdown").addEventListener("change", event => {
+        state.selectedCustomerCis = event.target.value;
+        document.getElementById("selectedCustomerLabel").textContent = `Selected: ${selectedCustomer().name}`;
+        renderAccountDropdown();
+        renderDefaultAndInputRows();
+        renderOutputPreview(selectedBuilderProcedure());
+      });
+      document.getElementById("procedureSearch").addEventListener("input", renderProcedureArea);
+      document.getElementById("procedureSelect").addEventListener("change", () => {
+        renderProcedureStructure();
+        renderBuilder();
+        renderAccountDropdown();
+        renderDefaultAndInputRows();
+      });
+      document.getElementById("dateField").addEventListener("input", () => renderOutputPreview(selectedBuilderProcedure()));
+      document.getElementById("bulkProcedureSearch").addEventListener("input", renderProcedureArea);
+      document.getElementById("bulkIdentifiers").addEventListener("input", renderBulkMatches);
+      document.getElementById("bulkAnalyze").addEventListener("click", () => {
+        renderBulkMatches();
+        setFooter("Bulk list analyzed. Use checked rows to generate now, or create drafts for rows needing input.");
+      });
+      document.getElementById("historySearch").addEventListener("input", renderHistoryRows);
+      document.getElementById("sourceFilter").addEventListener("input", renderBuilder);
+      ["sourceEff", "sourceExp"].forEach(id => {
+        document.getElementById(id).addEventListener("input", () => {
+          const source = state.sourceForms.find(row => row.SourceFormCode === state.selectedSourceCode);
+          if (!source) return;
+          source.EffectiveDate = document.getElementById("sourceEff").value;
+          source.ExpiryDate = document.getElementById("sourceExp").value;
+          renderSourceDetail(source);
+        });
+      });
+      document.querySelectorAll("[data-token]").forEach(button => {
+        button.addEventListener("click", () => {
+          const input = document.getElementById("builderOutput");
+          input.value = input.value ? `${input.value}_${button.dataset.token}` : button.dataset.token;
+          renderOutputPreview(selectedBuilderProcedure());
+        });
+      });
+      document.getElementById("builderProcedure").addEventListener("change", () => {
+        renderBuilder();
+      });
+      document.getElementById("bulkProcedure").addEventListener("change", () => {
+        document.getElementById("procedureSelect").value = document.getElementById("bulkProcedure").value;
+        renderProcedureStructure();
+        renderBuilder();
+        renderAccountDropdown();
+        renderDefaultAndInputRows();
+        renderBulkMatches();
+      });
+      document.getElementById("builderOutput").addEventListener("input", () => renderOutputPreview(selectedBuilderProcedure()));
+      document.getElementById("chooseFolder").addEventListener("click", chooseFolder);
+      document.getElementById("scanSelectedRoot").addEventListener("click", scanSelectedRoot);
+      document.getElementById("scanAllRoots").addEventListener("click", scanAllRoots);
+      document.getElementById("uploadFolder").addEventListener("click", () => document.getElementById("folderUpload").click());
+      document.getElementById("folderUpload").addEventListener("change", event => scanUploadedFiles(event.target.files));
+      document.getElementById("reloadData").addEventListener("click", loadPackageConfig);
+      document.getElementById("mappingShortcut").addEventListener("click", () => switchTab("coordinate"));
+      document.getElementById("sourceMappingShortcut").addEventListener("click", () => switchTab("coordinate"));
+      document.getElementById("coordSource").addEventListener("change", event => {
+        const source = coordinateSources(document.getElementById("coordSourceSearch").value).find(row => row.SourceFormCode === event.target.value);
+        if (source) {
+          state.selectedSourceCode = source.SourceFormCode;
+          renderSourceForms();
+          renderCoordinateSource(source);
+          switchTab("coordinate");
+        }
+      });
+      document.getElementById("coordSourceSearch").addEventListener("input", () => {
+        const current = coordinateSources().find(row => row.SourceFormCode === document.getElementById("coordSource").value) || state.sourceForms[0];
+        renderCoordinateSource(current);
+      });
+      document.getElementById("pdfPage").addEventListener("click", event => {
+        const rect = event.currentTarget.getBoundingClientRect();
+        const x = Math.max(0, Math.round((event.clientX - rect.left) * 10) / 10);
+        const y = Math.max(0, Math.round((event.clientY - rect.top) * 10) / 10);
+        document.getElementById("coordX").value = x.toFixed(1);
+        document.getElementById("coordY").value = y.toFixed(1);
+        const marker = document.createElement("div");
+        marker.className = "coord-marker";
+        marker.style.left = `${x}px`;
+        marker.style.top = `${y}px`;
+        event.currentTarget.appendChild(marker);
+      });
+      document.getElementById("addCoordField").addEventListener("click", () => {
+        const page = document.getElementById("pdfPage");
+        const x = Number(document.getElementById("coordX").value || 0);
+        const y = Number(document.getElementById("coordY").value || 0);
+        const width = Number(document.getElementById("coordWidth").value || 160);
+        const box = document.createElement("div");
+        box.className = "pdf-field";
+        box.style.left = `${x}px`;
+        box.style.top = `${y}px`;
+        box.style.width = `${width}px`;
+        page.appendChild(box);
+        setFooter(`Preview field added. Real app saves the mapping to the selected form folder's mapping.json.`);
+      });
+      document.getElementById("generateButton").addEventListener("click", () => {
+        const proc = selectedProcedure();
+        const required = itemsForProcedure(proc.ProcedureCode).map(item => item.SourceFormCode);
+        const sourceIssues = required.filter(code => {
+          const source = sourceByCode(code);
+          const status = source ? sourceStatusFromScan(source) : { type: "bad" };
+          return status.type === "bad" || status.type === "warn";
+        });
+        const expiryIssues = required.filter(code => {
+          const source = sourceByCode(code);
+          return source && sourceExpiryStatus(source).type === "bad";
+        });
+        if (expiryIssues.length) {
+          setFooter(`Warning: ${expiryIssues.length} required source form(s) expired. Update Source Forms before final generation.`);
+        } else if (sourceIssues.length) {
+          setFooter(`Warning: ${sourceIssues.length} required source form(s) need Source Forms cleanup. App can continue with valid remaining forms only.`);
+        } else {
+          setFooter(`Preview ready: ${procLabel(proc)} can generate.`);
+        }
+      });
+    }
+
+    renderTabs();
+    attachEvents();
+    loadPackageConfig();
+  </script>
+</body>
+</html>

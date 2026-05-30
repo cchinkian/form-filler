@@ -32,6 +32,7 @@ jobs:
           copy dist\CoordPicker.exe bundle\
           xcopy /E /I config bundle\config
           xcopy /E /I data bundle\data
+          xcopy /E /I docs bundle\docs
           if exist bundle\config\settings.json del bundle\config\settings.json
           copy bundle\config\settings.example.json bundle\config\settings.json
           if exist bundle\data\clients.xlsx del bundle\data\clients.xlsx

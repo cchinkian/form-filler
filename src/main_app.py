@@ -100,6 +100,7 @@ class ProcedureAutomationApp(tk.Tk):
         ttk.Label(top, text="PDF Procedure Automation", font=("", 14, "bold")).pack(side=tk.LEFT)
         ttk.Button(top, text="Reload", command=self._load_all).pack(side=tk.RIGHT, padx=(4, 0))
         ttk.Button(top, text="Settings", command=self._open_settings_dialog).pack(side=tk.RIGHT, padx=(4, 0))
+        ttk.Button(top, text="User Manual", command=self._open_user_manual).pack(side=tk.RIGHT, padx=(4, 0))
         ttk.Button(top, text="Mapping Editor", command=self._show_coordinate_tab).pack(side=tk.RIGHT, padx=(4, 0))
         ttk.Button(top, text="Output", command=lambda: self._open_path(config_loader.output_folder_path(self.settings))).pack(side=tk.RIGHT, padx=(4, 0))
 
@@ -2132,6 +2133,22 @@ class ProcedureAutomationApp(tk.Tk):
                 subprocess.Popen(["xdg-open", str(path)])
         except Exception as e:
             messagebox.showerror("Cannot open", f"{path}\n\n{e}")
+
+    def _open_user_manual(self):
+        bases = []
+        if getattr(sys, "frozen", False):
+            bases.append(Path(sys.executable).parent)
+            bases.append(Path(getattr(sys, "_MEIPASS", Path(sys.executable).parent)))
+        bases.append(Path(__file__).resolve().parents[1])
+        for base in bases:
+            manual = base / "docs" / "user_manual.html"
+            if manual.exists():
+                self._open_path(manual)
+                return
+        messagebox.showwarning(
+            "User manual not found",
+            "docs/user_manual.html was not found. Re-download the latest portable ZIP or check the docs folder.",
+        )
 
     def _set_status(self, text: str):
         self.lbl_status.config(text=text)

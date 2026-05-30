@@ -27,6 +27,7 @@ FormFiller.exe      Main daily-use app
 CoordPicker.exe     Mapping editor for source PDF coordinates
 config/             Procedures, source forms, mapping JSON, settings
 data/               Customer workbook template and history log location
+docs/               User manual with screenshots
 forms/              User source PDF folder, created on launch
 Output/             Generated PDFs, created on launch
 ```
@@ -36,10 +37,26 @@ Output/             Generated PDFs, created on launch
 ## Main Screens
 
 - `Generate Package`: search one customer, choose a procedure, fill missing fields, generate one combined PDF.
-- `Bulk Export`: paste/import CIS list, review matched/not found/duplicate rows, generate the same procedure for matched customers.
-- `Procedure Builder`: edit procedure names and package order, search available source forms, add/remove/reorder forms, and enable automatic blank pages after odd-page PDFs.
-- `Source Forms`: maintain SourceFormCode, display name, version, PDF path, mapping key, active flag, and expiry remarks.
-- `History / Settings`: open local workbook/config/history/output files and configure paths.
+- `Bulk Export`: paste/import CIS, IC, passport, or name list; review match status; create drafts or generate selected rows for one procedure.
+- `Procedure Builder`: edit procedure names, tags, output filename tokens, package order, source forms, duplicate/sunset versions, and enable automatic blank pages after odd-page PDFs.
+- `Source Forms`: manage multiple form root folders, scan source form subfolders, check PDF status, old forms folder, effective/expiry dates, mapping status, and last mapping edit.
+- `Coordinate Pointer`: embedded mapping editor for placing Excel/session fields onto PDF coordinates.
+- `History / Settings`: search drafts/generated history, restore previous work, and open local workbook/config/history/output files.
+
+## User Manual
+
+Open the manual from the app using:
+
+```text
+User Manual
+```
+
+The same guide is included in the portable bundle:
+
+```text
+docs/user_manual.html
+docs/user_manual.md
+```
 
 ## Local Editable Files
 
@@ -75,7 +92,7 @@ The shipped template contains:
 - `bulk_cis_template`
 - `history_log`
 
-Search supports customer name, CIS, IC, and policy number. Bulk matching uses CIS only.
+Search supports customer name, CIS, IC, passport, and policy number. Bulk matching accepts CIS, IC, passport, or name.
 
 Column headers starting with `*` are treated as default/locked fields in the app, for example `*cis`, `*name`, `*ic_number`.
 
