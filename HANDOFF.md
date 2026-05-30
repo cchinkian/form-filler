@@ -9,17 +9,18 @@ Core flow:
 The app is local-only and offline. Do not add cloud sync, login, API validation, CRM, manager approval, OCR, email/WhatsApp sending, SQLite/server database, or online form update features for Version 1.
 
 ### Latest Published Release
-- Release tag: `workflow-drafts-source-scan-2026-05-30`
-- Release page: https://github.com/cchinkian/form-filler/releases/tag/workflow-drafts-source-scan-2026-05-30
+- Release tag: `user-manual-bundled-2026-05-30`
+- Release page: https://github.com/cchinkian/form-filler/releases/tag/user-manual-bundled-2026-05-30
 - Latest app ZIP: https://github.com/cchinkian/form-filler/releases/latest/download/FormFiller-portable.zip
 - Latest sample work folder ZIP remains from the previous release: https://github.com/cchinkian/form-filler/releases/download/procedure-automation-source-history-update-2026-05-27/FormFiller_Test_WorkFolder_20260527.zip
-- GitHub Windows build: `26667489012`
+- GitHub Windows build: `26678067981`
 - Latest release assets:
-  - `FormFiller-portable.zip` — contains `FormFiller.exe`, `CoordPicker.exe`, `config/`, `data/`
+  - `FormFiller-portable.zip` — contains `FormFiller.exe`, `CoordPicker.exe`, `config/`, `data/`, `docs/`
 - `GreenTest.exe` is no longer required and is not included in the latest portable ZIP.
-- Release asset digest from GitHub: `sha256:b07db1edebbc8391ffb8e33980262185e9cbe15db3b809bcca45f0ee34eb8665`
+- Release asset digest from GitHub: `sha256:5e0bf24fe3c08444f53966955269c64f6f9d48ea59a91b1ca04359d4335bc67d`
 
 ### Latest Commits
+- `27bbe2a` — `Add bundled user manual`
 - `f2889ee` — `Refine procedure workflow drafts and source scanning`
 - `ad0770d` — `Update handoff for combined app release [skip ci]`
 - `ad770c9` — `Combine coordinate mapper with procedure app`
@@ -33,11 +34,18 @@ The app is local-only and offline. Do not add cloud sync, login, API validation,
 - Downloaded and inspected `FormFiller-portable.zip`:
   - `FormFiller.exe` present.
   - `CoordPicker.exe` present.
+  - `docs/user_manual.html` present.
+  - `docs/user_manual.md` present.
+  - `docs/manual_images/*.png` present.
   - `GreenTest.exe` absent.
   - `config/settings.json` and `data/clients_template.xlsx` present.
 - Verified latest direct download redirects to the new tag.
 
 ### Latest Release Changes
+- Added a top-bar `User Manual` button that opens `docs/user_manual.html`.
+- Added `docs/user_manual.html` and `docs/user_manual.md` with step-by-step usage guidance and screenshots.
+- Added screenshot images under `docs/manual_images/`.
+- GitHub Windows portable ZIP now bundles the `docs/` folder.
 - Generate Package no longer duplicates `RM Code`, `Branch`, and `Date`; the top session row is the single source for generation.
 - Generate Package now has `Save Draft`; drafts and generated rows live together in a searchable History list inside `History / Settings`.
 - Procedure input fields are derived only from mapped fields used by the selected procedure, deduplicated and sorted by usage count. Labels show quiet usage counts such as `Name x4`.
@@ -75,8 +83,16 @@ The app is local-only and offline. Do not add cloud sync, login, API validation,
 - `python3 -m py_compile src/catalog.py src/config_loader.py src/excel_reader.py src/pdf_engine.py src/package_engine.py src/coord_picker.py src/main_app.py`
 - `python3 tests/procedure_package_smoke.py`
 - `python3 tests/sales_flow_smoke.py`
-- `git diff --check -- HANDOFF.md src/config_loader.py src/coord_picker.py src/main_app.py src/package_engine.py`
+- `git diff --check -- .github/workflows/build.yml HANDOFF.md src/main_app.py readme.md docs/user_manual.md docs/user_manual.html`
 - Manual smoke: temporary form-root scan confirmed direct top-level PDF counting and ignored nested `old forms/` PDFs.
+- Manual screenshots generated for:
+  - Generate Package
+  - Bulk Export
+  - Procedure Builder
+  - Source Forms
+  - Coordinate Pointer
+  - History / Settings
+- Downloaded GitHub Actions artifact from run `26678067981` and inspected ZIP contents.
 
 ### Current Architecture
 - Procedures are not stored as pre-combined PDFs.
